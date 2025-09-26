@@ -389,14 +389,17 @@ def determine_direction(prev_x, curr_x, center_line, w):
         return "Upstream"
     return None
 
-# Prepare an inline ByteTrack configuration (prefer this; otherwise use a tuned bytetrack.yaml)
+# Prepare an inline BoT-SORT configuration (prefer this; otherwise use a tuned botsort.yaml)
 tracker_cfg = {
-    "tracker_type": "bytetrack",
+    "tracker_type": "botsort",
+    "track_buffer": 30,      # ← important: ride out brief occlusions
+    "match_thresh": 0.8,
+    "proximity_thresh": 0.5,
+    "appearance_thresh": 0.25,
+    "gmc_method": "sparseOptFlow",
+    "new_track_thresh": 0.1,
     "track_high_thresh": 0.1,
     "track_low_thresh": 0.05,
-    "new_track_thresh": 0.1,
-    "match_thresh": 0.8,
-    "track_buffer": 30,      # ← important: ride out brief occlusions
     "max_time_lost": 30
 }
 
@@ -468,7 +471,7 @@ with open(CSV_PATH, "w", newline="") as csvfile:
                 persist=True,
                 device=device,
                 verbose=False,
-                tracker="bytetrack.yaml"
+                tracker="botsort.yaml"
             )[0]
 
         # Draw center line + live counts
