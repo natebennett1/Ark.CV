@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ark.CV Fish Detection Dashboard</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="top-bar">
+    <h1>Ark.CV Fish Detection Dashboard</h1>
+    <nav class="top-nav">
+      <a href="#overview" class="nav-link">Overview</a>
+      <a href="#review" class="nav-link">Review Detections</a>
+    </nav>
+  </header>
+
+  <main>
+    <section id="overview" class="card-grid">
+      <article class="stat-card">
+        <h2>Year-To-Date</h2>
+        <p class="stat-value" id="ytd-count">0</p>
+        <p class="stat-label">Fish counted</p>
+      </article>
+      <article class="stat-card">
+        <h2>Month-To-Date</h2>
+        <p class="stat-value" id="mtd-count">0</p>
+        <p class="stat-label">Fish counted</p>
+      </article>
+      <article class="stat-card">
+        <h2>Week-To-Date</h2>
+        <p class="stat-value" id="wtd-count">0</p>
+        <p class="stat-label">Fish counted</p>
+      </article>
+    </section>
+
+    <section id="trend" class="card">
+      <header class="card-header">
+        <h2>Daily Detection Trend (Last 7 Days)</h2>
+      </header>
+      <div class="trend-chart" id="trend-chart"></div>
+    </section>
+
+    <section id="review" class="card">
+      <header class="card-header">
+        <h2>Low Confidence Detections</h2>
+        <p>Review and resolve detections below the configured confidence threshold.</p>
+      </header>
+      <div class="review-grid" id="review-container">
+        <!-- Cards injected by JavaScript -->
+      </div>
+    </section>
+  </main>
+
+  <template id="review-card-template">
+    <article class="review-card">
+      <img class="review-image" alt="Fish detection" loading="lazy" />
+      <div class="review-body">
+        <h3 class="species-name"></h3>
+        <dl class="metadata">
+          <div>
+            <dt>Confidence</dt>
+            <dd class="confidence"></dd>
+          </div>
+          <div>
+            <dt>Detected</dt>
+            <dd class="timestamp"></dd>
+          </div>
+          <div>
+            <dt>Location</dt>
+            <dd class="location"></dd>
+          </div>
+        </dl>
+        <div class="action-group">
+          <button class="action-button accept">Accept Species</button>
+          <button class="action-button change">Change Species</button>
+        </div>
+      </div>
+    </article>
+  </template>
+
+  <footer class="footer">
+    <p>Ark.CV Demo Interface &bull; Built for model review workflows</p>
+  </footer>
+
+  <script src="app.js" defer></script>
+</body>
+</html>
