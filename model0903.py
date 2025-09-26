@@ -61,6 +61,7 @@ MIN_CLASS_CONF = {
 # HITL / Active Learning
 HITL_OUT_DIR          = "./hitl_queue"
 LOWCONF_THRESHOLD     = 0.80
+COUNT_REVIEW_THRESHOLD = 0.80  # flag counted fish under this confidence for HITL review
 HITL_EXPAND_RATIO     = 0.15
 HITL_TRACK_GAP_FRAMES = 45
 HITL_DEDUP            = True
@@ -285,10 +286,13 @@ class HITLCollector:
         proximity = -(self.lowconf_threshold - conf)
         return (sharp, area, proximity)
 
-    def _dir_for(self, date_str, location, pred_cls_name):
+    def _dir_for(self, date_str, location, pred_cls_name, category=None):
         date_dir = date_str.replace("-", "")
         species_dir = (pred_cls_name or "unknown").replace(" ", "_").lower()
-        return os.path.join(self.out_root, date_dir, location.replace(" ", "_"), species_dir)
+        location_dir = location.replace(" ", "_")
+        if category:
+            return os.path.join(self.out_root, category, date_dir, location_dir, species_dir)
+        return os.path.join(self.out_root, date_dir, location_dir, species_dir)
 
     def _write_row(self, row):
         with open(self.meta_csv_path, "a", newline="", encoding="utf-8") as f:
@@ -369,6 +373,48 @@ class HITLCollector:
         for tid in list(self.tracks.keys()):
             self._flush_track(tid)
             self.tracks.pop(tid, None)
+
+    def flag_count_event(self, frame, frame_idx, timestamp_sec, video_name,
+                         location, date_str, x1, y1, x2, y2,
+                         pred_cls_name, pred_conf, track_id, direction=None):
+        if frame is None:
+            return
+        x1i, y1i, x2i, y2i = int(x1), int(y1), int(x2), int(y2)
+        x1i, y1i = max(0, x1i), max(0, y1i)
+        h, w = frame.shape[:2]
+        x2i, y2i = min(w, max(x1i + 1, x2i)), min(h, max(y1i + 1, y2i))
+        crop = frame[y1i:y2i, x1i:x2i]
+        if crop is None or crop.size == 0:
+            return
+        annotated = frame.copy()
+        cv2.rectangle(annotated, (x1i, y1i), (x2i, y2i), (0, 0, 255), 2)
+        out_dir = self._dir_for(date_str, location, pred_cls_name, category="count_review")
+        Path(out_dir).mkdir(parents=True, exist_ok=True)
+        ts = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+        base = f"{ts}_f{frame_idx:06d}_t{track_id}_{pred_cls_name}_{pred_conf:.2f}"
+        crop_path = os.path.join(out_dir, base + "_crop.jpg")
+        frame_path = os.path.join(out_dir, base + "_frame.jpg")
+        cv2.imwrite(crop_path, crop, [int(cv2.IMWRITE_JPEG_QUALITY), 92])
+        cv2.imwrite(frame_path, annotated, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+        self._write_row([
+            datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            location,
+            date_str,
+            video_name,
+            frame_idx,
+            f"{timestamp_sec:.3f}",
+            track_id,
+            pred_cls_name,
+            f"{pred_conf:.4f}",
+            int(x1i),
+            int(y1i),
+            int(x2i),
+            int(y2i),
+            crop_path,
+            frame_path,
+            direction if direction is not None else "",
+            "count_below_threshold"
+        ])
 
 collector = HITLCollector(HITL_OUT_DIR, LOWCONF_THRESHOLD, HITL_EXPAND_RATIO, HITL_TRACK_GAP_FRAMES, HITL_DEDUP)
 
@@ -574,13 +620,16 @@ with open(CSV_PATH, "w", newline="") as csvfile:
                     "adipose_votes": deque(maxlen=ADIPOSE_WINDOW),
                     "length": length_inches,
                     "last_count_frame": -10**9,
-                    "crossing_count": 0
+                    "crossing_count": 0,
+                    "last_conf": 0.0
                 }
 
             # Temporal voting
             st["species_votes"].append(species_final)
             if "_" in species_final:
                 st["adipose_votes"].append(species_final.split("_",1)[1])
+
+            st["last_conf"] = float(conf)
 
             stable_species = majority_vote(st["species_votes"]) or "Unknown"
 
@@ -612,6 +661,26 @@ with open(CSV_PATH, "w", newline="") as csvfile:
                     DATE_STR
                 ])
                 print(f"COUNTED: Track {tid} ({stable_species}, {st['length']:.1f}in) {direction} at {video_timestamp_formatted} - Crossing #{st['crossing_count']}")
+
+                count_confidence = st.get("last_conf", float(conf))
+                if count_confidence < COUNT_REVIEW_THRESHOLD:
+                    collector.flag_count_event(
+                        frame=frame,
+                        frame_idx=frame_count,
+                        timestamp_sec=video_ts_sec_now,
+                        video_name=os.path.basename(VIDEO_PATH),
+                        location=LOCATION,
+                        date_str=DATE_STR,
+                        x1=x1,
+                        y1=y1,
+                        x2=x2,
+                        y2=y2,
+                        pred_cls_name=stable_species,
+                        pred_conf=count_confidence,
+                        track_id=tid,
+                        direction=direction
+                    )
+                    print(f"⚠️  FLAGGED for review: Track {tid} counted as {stable_species} with confidence {count_confidence:.2f} (<{COUNT_REVIEW_THRESHOLD:.2f})")
 
             # Update last_x and draw
             st["last_x"] = cx
