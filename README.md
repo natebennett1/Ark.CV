@@ -1,6 +1,6 @@
 # Ark.CV Fish Counting Pipeline
 
-This repository contains a vision pipeline for counting and
+This repository contains a computer vision pipeline for counting and
 classifying fish passages using an Ultralytics YOLO model. The pipeline ingests a
 video, tracks detections across frames, applies domain-specific species logic,
 and exports both an annotated video and CSV-based analytics.
@@ -118,14 +118,16 @@ fish_counter.py                  # New pipeline entry point
 2. **Configure Your Pipeline**:
   - Use the provided config file: `configs/wells_dam_test.json`
   - Or create your own config file based on the template
-  - In either case, make sure to update paths for your model weights and input video:
+  - In either case, make sure to update paths for your model weights and input video, and also the location and date string:
     ```json
     {
       "model": {
         "model_path": "path\to\your\weights.pt"
       },
       "io": {
-        "video_path": "path\to\your\video.mp4"
+        "video_path": "path\to\your\video.mp4",
+        "location": "location",
+        "date_str": "YYYY-MM-DD"
       }
     }
     ```
