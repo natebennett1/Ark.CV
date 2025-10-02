@@ -1,17 +1,9 @@
 # Ark.CV Fish Counting Pipeline
 
-This repository contains a single-script computer vision pipeline for counting and
-classifying fish passages using an Ultralytics YOLO model. The script ingests a
+This repository contains a vision pipeline for counting and
+classifying fish passages using an Ultralytics YOLO model. The pipeline ingests a
 video, tracks detections across frames, applies domain-specific species logic,
 and exports both an annotated video and CSV-based analytics.
-
-## Repository Structure
-
-- `model0903.py` – Main entry point that loads the YOLO model, performs
-  detection, tracks fish with BoT-SORT, applies seasonal and location-based
-  logic, triggers human-in-the-loop (HITL) exports, and writes per-track
-  measurements.
-- `README.md` – This guide.
 
 ## Requirements
 
@@ -25,7 +17,14 @@ and exports both an annotated video and CSV-based analytics.
   The additional packages (`filterpy`, `scikit-image`, `lap`, `scipy`) ensure
   BoT-SORT has the motion and appearance modules it expects.
 
-## Quick Start
+## Legacy Repository Structure
+
+- `model0903.py` – Main entry point to a single file that loads the YOLO model, performs
+  detection, tracks fish with BoT-SORT, applies seasonal and location-based
+  logic, triggers human-in-the-loop (HITL) exports, and writes per-track
+  measurements.
+
+### Quick Start
 
 1. **Update local paths** in `model0903.py`:
    - `MODEL_PATH` – Absolute path to your trained YOLO weights (`.pt`).
@@ -45,7 +44,7 @@ and exports both an annotated video and CSV-based analytics.
    - `hitl_queue/` – Crops queued for analyst review when detections are
      low-confidence or ambiguous.
 
-## BoT-SORT Tracking
+### BoT-SORT Tracking
 
 The pipeline now uses **BoT-SORT** instead of ByteTrack for multi-object
 tracking. BoT-SORT augments motion cues with appearance embeddings and global
@@ -58,7 +57,7 @@ tracker overrides.
 If you need to tune the tracker further, adjust the `tracker_cfg` dictionary in
 `model0903.py` or point the fallback to a custom YAML file.
 
-## Human-in-the-Loop Workflow
+### Human-in-the-Loop Workflow
 
 The `HITLCollector` class buffers low-confidence tracks, exporting cropped frame
 snippets for analyst review. Fine-tune the thresholds via:
@@ -69,6 +68,86 @@ snippets for analyst review. Fine-tune the thresholds via:
 
 Resulting CSVs (`hitl_manifest.csv`) and crops/images are saved in
 `hitl_queue/<track_id>/` folders.
+
+## New Repository Structure
+```
+configs/
+└── wells_dam_test.json          # Default pipeline configuration
+
+src/
+├── classification/              # Species classification with business rules
+│   ├── species_classifier.py    # Applies seasonal rules and confidence thresholds
+│   └── species_rules.py         # Business logic for species/seasons
+├── config/                      # All configuration management
+│   ├── config_loader.py         # Loads pipeline config from .json file
+│   └── settings.py              # Centralized config with validation
+├── detection/                   # YOLO model management
+│   ├── adipose_detector.py      # Secondary adipose fin detection
+│   └── detector.py              # Main fish detector with tracking
+├── io/                          # Video processing and output management
+│   ├── output_writer.py         # CSV output and statistics
+│   └── video_processor.py       # Video I/O with cloud support
+├── quality/                     # Human-in-the-loop data collection
+│   └── hitl_collector.py        # Low-confidence detection review
+└── tracking/                    # Fish tracking and state management
+    ├── fish_state.py            # Individual fish state tracking
+    └── tracker.py               # Direction detection and crossing logic
+
+fish_counter.py                  # New pipeline entry point
+```
+
+### Quick Start
+
+1. **Setup Environment**:
+  - This example is for Windows.
+    ```bash
+    # Navigate to your project directory
+    cd "path\to\your\repo"
+
+    # Create your virtual environment (if you don't have one already)
+    python -m venv .venv
+
+    # Activate your virtual environment
+    .\.venv\Scripts\Activate.ps1
+
+    # Install dependencies
+    pip install ultralytics==8.2.0 opencv-python torch torchvision torchaudio
+    pip install filterpy scikit-image lap scipy
+    ```
+
+2. **Configure Your Pipeline**:
+  - Use the provided config file: `configs/wells_dam_test.json`
+  - Or create your own config file based on the template
+  - In either case, make sure to update paths for your model weights and input video:
+    ```json
+    {
+      "model": {
+        "model_path": "path\to\your\weights.pt"
+      },
+      "io": {
+        "video_path": "path\to\your\video.mp4"
+      }
+    }
+    ```
+
+3. **Run the Pipeline**:
+  - By default, the `configs/wells_dam_test.json` will be used.
+    ```bash
+    python fish_counter.py
+    ```
+  - To override with your own config file, run:
+    ```bash
+    python fish_counter.py configs/your_config_file.json
+    ```
+
+4. **Outputs** (automatically organized in timestamped folders):
+    ```
+    output_20251002_143521/
+    ├── hitl_queue/                               # Low-confidence crops for review
+    ├── annotated_video_20251002_143521.mp4       # Video with bounding boxes
+    ├── fish_counts_20251002_143521.csv           # Detection & classification data
+    └── fish_counts_20251002_143521_summary.txt   # Summary
+    ```
 
 ## Recommended Next Steps for the Fish Counting Model
 

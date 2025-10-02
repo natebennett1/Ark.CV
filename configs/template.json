@@ -1,0 +1,71 @@
+{
+  "model": {
+    "model_path": "C:\\Users\\user\\path\\to\\your\\weights.pt",
+    "confidence_threshold": 0.10,
+    "iou_threshold": 0.25,
+    "max_detections": 200,
+    "device": "auto",
+    "adipose_model_path": "",
+    "adipose_min_confidence": 0.50,
+    "adipose_expand_ratio": 0.20
+  },
+  "tracker": {
+    "tracker_type": "botsort",
+    "track_buffer": 30,
+    "match_thresh": 0.8,
+    "proximity_thresh": 0.5,
+    "appearance_thresh": 0.25,
+    "gmc_method": "sparseOptFlow",
+    "new_track_thresh": 0.1,
+    "track_high_thresh": 0.1,
+    "track_low_thresh": 0.05,
+    "max_time_lost": 30
+  },
+  "classification": {
+    "unknown_threshold": 0.45,
+    "min_class_confidence": {
+      "BullTrout": 0.80
+    },
+    "pixels_per_inch": 25.253,
+    "size_thresholds": {
+      "Chinook": {"adult": 22, "jack": 12, "mini_jack": 0},
+      "Coho": {"adult": 18, "jack": 12},
+      "Sockeye": {"adult": 20},
+      "Steelhead": {"adult": 24},
+      "BullTrout": {"adult": 12}
+    }
+  },
+  "tracking": {
+    "center_line_position": 0.50,
+    "trail_max_length": 30,
+    "stability_window": 3,
+    "adipose_window": 3,
+    "cross_delta_percent": 0.03,
+    "count_cooldown_frames": 0
+  },
+  "hitl": {
+    "output_dir": "./hitl_queue",
+    "lowconf_threshold": 0.80,
+    "count_review_threshold": 0.80,
+    "expand_ratio": 0.15,
+    "track_gap_frames": 45,
+    "enable_deduplication": true
+  },
+  "video": {
+    "enable_display": false,
+    "save_output_video": true,
+    "output_video_codec": "mp4v",
+    "frame_skip": 0
+  },
+  "io": {
+    "video_path": "C:\\Users\\user\\path\\to\\your\\video.mp4",
+    "csv_output_path": "",
+    "video_output_path": "",
+    "location": "Dam Location",
+    "date_str": "2000-01-01",
+    "s3_input_bucket": null,
+    "s3_output_bucket": null,
+    "s3_input_key": null,
+    "use_cloud_storage": false
+  }
+}
