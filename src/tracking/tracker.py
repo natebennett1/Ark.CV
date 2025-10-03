@@ -121,22 +121,23 @@ class TrackingManager:
         
         return fish_state, direction
     
-    def can_count_crossing(self, fish_state: FishState, frame_number: int) -> bool:
+    def can_count_crossing(self, fish_state: FishState, direction: str, frame_number: int) -> bool:
         """
-        Check if a crossing can be counted (respects cooldown).
+        Check if a crossing can be counted (respects cooldown and anti-oscillation).
         
         Args:
             fish_state: Fish state object
+            direction: Direction of crossing
             frame_number: Current frame number
             
         Returns:
             True if crossing can be counted
         """
-        return fish_state.can_count(frame_number, self.config.count_cooldown_frames)
+        return fish_state.should_count_crossing(direction, frame_number, self.config.count_cooldown_frames)
     
-    def record_crossing(self, fish_state: FishState, frame_number: int):
+    def record_crossing(self, fish_state: FishState, direction: str, frame_number: int):
         """Record a crossing event for a fish."""
-        fish_state.record_count(frame_number)
+        fish_state.record_count(frame_number, direction)
     
     def cleanup_inactive_tracks(self, active_track_ids: Set[int]):
         """Clean up tracking state for inactive tracks."""

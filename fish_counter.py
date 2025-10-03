@@ -275,11 +275,11 @@ class FishCountingPipeline:
         # Check for counting
         can_count = (direction is not None and 
                     stable_species != "Unknown" and
-                    self.tracking_manager.can_count_crossing(fish_state, frame_number))
+                    self.tracking_manager.can_count_crossing(fish_state, direction, frame_number))
         
         if can_count:
             # Record the count
-            self.tracking_manager.record_crossing(fish_state, frame_number)
+            self.tracking_manager.record_crossing(fish_state, direction, frame_number)
             
             # Update live counts for display
             live_species_counts[stable_species][direction] += 1

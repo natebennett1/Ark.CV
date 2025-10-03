@@ -32,6 +32,10 @@ class FishState:
     # Crossing detection state
     last_side: Optional[str] = None  # "left", "right", or None (in center zone)
     
+    # Anti-oscillation tracking
+    last_crossing_direction: Optional[str] = None  # Track last crossing direction
+    consecutive_opposite_crossings: int = 0  # Count of back-and-forth crossings
+    
     # Temporal voting queues
     species_votes: deque = field(default_factory=deque)
     adipose_votes: deque = field(default_factory=deque)
@@ -99,10 +103,64 @@ class FishState:
         """Check if this fish can be counted (respects cooldown)."""
         return current_frame - self.last_count_frame >= cooldown_frames
     
-    def record_count(self, frame_number: int):
+    def should_count_crossing(self, direction: str, current_frame: int, cooldown_frames: int = 0) -> bool:
+        """
+        Check if a crossing should be counted, considering anti-oscillation logic.
+        
+        Args:
+            direction: Direction of crossing ("Upstream" or "Downstream")
+            current_frame: Current frame number
+            cooldown_frames: Minimum frames between counts
+            
+        Returns:
+            True if crossing should be counted, False if it's likely an oscillation
+        """
+        # Basic cooldown check
+        if not self.can_count(current_frame, cooldown_frames):
+            return False
+        
+        # Anti-oscillation logic
+        if self.last_crossing_direction is not None:
+            # Check if this is the opposite direction from the last crossing
+            is_opposite = (
+                (self.last_crossing_direction == "Upstream" and direction == "Downstream") or
+                (self.last_crossing_direction == "Downstream" and direction == "Upstream")
+            )
+            
+            if is_opposite:
+                # Calculate time since last crossing
+                frames_since_last = current_frame - self.last_count_frame
+                
+                # If it's too soon after the last crossing, likely an oscillation
+                # Use a more aggressive cooldown for opposite directions
+                oscillation_cooldown = max(cooldown_frames, 30)  # At least 1 second at 30fps
+                
+                if frames_since_last < oscillation_cooldown:
+                    print(f"🚫 OSCILLATION DETECTED: Track {self.track_id} tried to cross {direction} "
+                          f"only {frames_since_last} frames after {self.last_crossing_direction}")
+                    return False
+                
+                # Track consecutive opposite crossings
+                self.consecutive_opposite_crossings += 1
+                
+                # If we have too many rapid back-and-forth crossings, be more restrictive
+                if self.consecutive_opposite_crossings >= 2:
+                    extended_cooldown = 60  # 2 seconds at 30fps
+                    if frames_since_last < extended_cooldown:
+                        print(f"🚫 EXCESSIVE OSCILLATION: Track {self.track_id} blocked after "
+                              f"{self.consecutive_opposite_crossings} rapid reversals")
+                        return False
+            else:
+                # Same direction as last crossing, reset oscillation counter
+                self.consecutive_opposite_crossings = 0
+        
+        return True
+    
+    def record_count(self, frame_number: int, direction: str):
         """Record that this fish was counted."""
         self.crossing_count += 1
         self.last_count_frame = frame_number
+        self.last_crossing_direction = direction
 
 
 class FishStateManager:
