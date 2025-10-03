@@ -83,6 +83,7 @@ class TrackingManager:
         
         # Get or create fish state
         fish_state = self.state_manager.get_or_create_state(track_id, center_x, center_y)
+        fish_state.last_seen_frame = frame_number
         
         # Calculate length
         length = self._calculate_fish_length(x1, y1, x2, y2)
@@ -120,9 +121,9 @@ class TrackingManager:
         """Record a crossing event for a fish."""
         fish_state.record_count(frame_number)
     
-    def cleanup_inactive_tracks(self, active_track_ids: Set[int]):
+    def cleanup_inactive_tracks(self, active_track_ids: Set[int], current_frame: int):
         """Clean up tracking state for inactive tracks."""
-        self.state_manager.cleanup_inactive_tracks(active_track_ids)
+        self.state_manager.cleanup_inactive_tracks(active_track_ids, current_frame)
     
     def get_fish_state(self, track_id: int) -> Optional[FishState]:
         """Get fish state for a specific track ID."""

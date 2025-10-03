@@ -53,6 +53,10 @@ non-linear fish trajectories. Configuration defaults are defined inline in
 `botsort.yaml` if the running Ultralytics build does not accept dictionary-based
 tracker overrides.
 
+To delay clean-up of short-lived ID drops, adjust `tracking.inactive_grace_frames`
+to control how many frames a track can disappear before its cached state is
+purged.
+
 If you need to tune the tracker further, adjust the `tracker_cfg` dictionary in
 `model0903.py` or point the fallback to a custom YAML file.
 

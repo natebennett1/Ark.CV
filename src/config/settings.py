@@ -70,6 +70,7 @@ class TrackingConfig:
     adipose_window: int = 3
     cross_delta_percent: float = 0.03  # Percentage past center line to count
     count_cooldown_frames: int = 0  # Frames before same track can count again
+    inactive_grace_frames: int = 5  # Frames to keep state after last observation
 
 
 @dataclass
@@ -173,9 +174,12 @@ class PipelineConfig:
         # Validate numeric ranges
         if not 0 <= self.tracking.center_line_position <= 1:
             errors.append("Center line position must be between 0 and 1")
-            
+
         if not 0 <= self.model.confidence_threshold <= 1:
             errors.append("Confidence threshold must be between 0 and 1")
+
+        if self.tracking.inactive_grace_frames < 0:
+            errors.append("Inactive grace frames must be non-negative")
         
         if errors:
             raise ValueError("Configuration validation failed:\n" + "\n".join(f"- {e}" for e in errors))

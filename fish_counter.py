@@ -184,11 +184,10 @@ class FishCountingPipeline:
             # Extract detections
             boxes, track_ids, confidences, class_ids = self.detector.extract_detections(results)
             
+            active_track_ids = set(track_ids) if track_ids is not None else set()
+            self.tracking_manager.cleanup_inactive_tracks(active_track_ids, frame_number)
+
             if boxes is not None and track_ids is not None:
-                # Clean up inactive tracks
-                active_track_ids = set(track_ids)
-                self.tracking_manager.cleanup_inactive_tracks(active_track_ids)
-                
                 # Process each detection
                 for bbox, track_id, confidence, class_id in zip(boxes, track_ids, confidences, class_ids):
                     self._process_detection(
