@@ -29,6 +29,9 @@ class FishState:
     last_count_frame: int = -1000000  # Frame of last count event
     crossing_count: int = 0
     
+    # Crossing detection state
+    last_side: Optional[str] = None  # "left", "right", or None (in center zone)
+    
     # Temporal voting queues
     species_votes: deque = field(default_factory=deque)
     adipose_votes: deque = field(default_factory=deque)

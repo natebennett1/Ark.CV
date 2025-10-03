@@ -106,24 +106,13 @@ class FishDetector:
         if self.model is None:
             raise RuntimeError("Model not loaded. Call load_model() first.")
         
-        try:
-            # Try with inline tracker config first
-            results = self.model.track(
-                source=frame,
-                persist=True,
-                device=self.device,
-                verbose=False,
-                tracker=self._tracker_cfg_dict
-            )[0]
-        except TypeError:
-            # Fallback to default YAML if dict config not supported
-            results = self.model.track(
-                source=frame,
-                persist=True, 
-                device=self.device,
-                verbose=False,
-                tracker="botsort.yaml"
-            )[0]
+        results = self.model.track(
+            source=frame,
+            persist=True,
+            device=self.device,
+            verbose=False,
+            tracker="botsort.yaml"
+        )[0]
         
         return results
     

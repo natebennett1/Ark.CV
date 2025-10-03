@@ -45,7 +45,7 @@ class TrackerConfig:
 @dataclass
 class ClassificationConfig:
     """Configuration for species classification."""
-    unknown_threshold: float = 0.45
+    unknown_threshold: float = 0.25
     min_class_confidence: Dict[str, float] = field(default_factory=lambda: {
         "BullTrout": 0.80
     })
@@ -68,7 +68,7 @@ class TrackingConfig:
     trail_max_length: int = 30
     stability_window: int = 3  # Frames for majority vote
     adipose_window: int = 3
-    cross_delta_percent: float = 0.03  # Percentage past center line to count
+    cross_delta_percent: float = 0.001  # Percentage past center line to count
     count_cooldown_frames: int = 0  # Frames before same track can count again
 
 

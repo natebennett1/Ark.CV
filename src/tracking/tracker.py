@@ -5,7 +5,7 @@ This module handles the high-level tracking logic including direction detection,
 center line crossing, and count debouncing.
 """
 
-from typing import Optional, Tuple, Dict, Set
+from typing import Optional, Tuple, Dict, Set, TYPE_CHECKING
 
 from ..config.settings import TrackingConfig
 from .fish_state import FishStateManager, FishState
@@ -32,12 +32,12 @@ class TrackingManager:
         self.frame_width = frame_width
         self.center_line = int(frame_width * self.config.center_line_position)
     
-    def determine_direction(self, prev_x: int, curr_x: int) -> Optional[str]:
+    def determine_direction(self, fish_state: FishState, curr_x: int) -> Optional[str]:
         """
-        Determine fish movement direction based on center line crossing.
+        Determine fish movement direction based on center line crossing using stateful detection.
         
         Args:
-            prev_x: Previous x-coordinate
+            fish_state: Fish state object to track crossing state
             curr_x: Current x-coordinate
             
         Returns:
@@ -49,13 +49,31 @@ class TrackingManager:
         # Calculate delta threshold (percentage of frame width)
         delta = int(self.frame_width * self.config.cross_delta_percent)
         
-        # Check for crossing with debounce
-        if prev_x < (self.center_line - 0) and curr_x >= (self.center_line + delta):
-            return "Downstream"
-        elif prev_x > (self.center_line + 0) and curr_x <= (self.center_line - delta):
-            return "Upstream"
+        # Define the zones
+        left_zone = self.center_line - delta
+        right_zone = self.center_line + delta
         
-        return None
+        # Determine current side
+        if curr_x < left_zone:
+            current_side = "left"
+        elif curr_x > right_zone:
+            current_side = "right"
+        else:
+            current_side = "center"  # In the buffer zone
+        
+        direction = None
+        
+        # Check for crossing: only trigger when moving from one clear side to the other clear side
+        if fish_state.last_side == "left" and current_side == "right":
+            direction = "Downstream"
+        elif fish_state.last_side == "right" and current_side == "left":
+            direction = "Upstream"
+        
+        # Update the fish's last known side (only when in a clear zone, not center)
+        if current_side in ["left", "right"]:
+            fish_state.last_side = current_side
+            
+        return direction
     
     def process_detection(self, 
                          track_id: int,
@@ -95,8 +113,8 @@ class TrackingManager:
             fish_state.add_adipose_vote(adipose_status)
         
         # Detect direction
-        direction = self.determine_direction(fish_state.last_x, center_x)
-        
+        direction = self.determine_direction(fish_state, center_x)
+
         # Update position and trail
         fish_state.update_position(center_x, center_y)
         self.state_manager.update_trail(track_id, center_x, center_y)
