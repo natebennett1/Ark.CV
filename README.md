@@ -9,12 +9,11 @@ and exports both an annotated video and CSV-based analytics.
 
 - Python 3.9+
 - GPU optional (CUDA acceleration improves throughput).
-- Recommended Python dependencies:
-  ```bash
-  pip install ultralytics==8.2.0 opencv-python torch torchvision torchaudio
-  pip install filterpy scikit-image lap scipy
-  ```
-  The additional packages (`filterpy`, `scikit-image`, `lap`, `scipy`) ensure
+- Noteworthy Python dependencies (this README will walk you through installing them later):
+  - `ultralytics==8.2.0`
+  - `opencv-python`
+  - `torch`, `torchvision`,`torchaudio`
+  - (`filterpy`, `scikit-image`, `lap`, `scipy`) ensure
   BoT-SORT has the motion and appearance modules it expects.
 
 ## Legacy Repository Structure
