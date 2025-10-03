@@ -7,7 +7,7 @@ direction detection, and crossing counting.
 
 from dataclasses import dataclass, field
 from collections import deque, defaultdict
-from typing import Dict, Optional
+from typing import Dict, Optional, Set
 
 from ..config.settings import TrackingConfig
 
@@ -27,6 +27,7 @@ class FishState:
     length_inches: float = 0.0
     last_confidence: float = 0.0
     last_count_frame: int = -1000000  # Frame of last count event
+    last_seen_frame: int = -1  # Frame index when the fish was last observed
     crossing_count: int = 0
     
     # Temporal voting queues
@@ -141,11 +142,19 @@ class FishStateManager:
         """Get the trail points for a fish."""
         return list(self.track_trails[track_id])
     
-    def cleanup_inactive_tracks(self, active_track_ids: set):
-        """Remove states for tracks that are no longer active."""
+    def cleanup_inactive_tracks(self, active_track_ids: Set[int], current_frame: int) -> None:
+        """Remove states for tracks that have been inactive past the grace period."""
         inactive_ids = set(self.fish_states.keys()) - active_track_ids
-        
+
         for track_id in inactive_ids:
+            state = self.fish_states.get(track_id)
+            if state is None:
+                continue
+
+            last_seen = state.last_seen_frame
+            if current_frame - last_seen <= self.config.inactive_grace_frames:
+                continue
+
             self.fish_states.pop(track_id, None)
             self.track_trails.pop(track_id, None)
     
