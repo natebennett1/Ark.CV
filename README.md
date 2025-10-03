@@ -111,8 +111,7 @@ fish_counter.py                  # New pipeline entry point
     .\.venv\Scripts\Activate.ps1
 
     # Install dependencies
-    pip install ultralytics==8.2.0 opencv-python torch torchvision torchaudio
-    pip install filterpy scikit-image lap scipy
+    pip install -r requirements.txt
     ```
 
 2. **Configure Your Pipeline**:
