@@ -68,7 +68,6 @@ class TrackingConfig:
     trail_max_length: int = 30
     stability_window: int = 3  # Frames for majority vote
     adipose_window: int = 3
-    cross_delta_percent: float = 0.001  # Percentage past center line to count
     count_cooldown_frames: int = 0  # Frames before same track can count again
 
 

@@ -46,30 +46,23 @@ class TrackingManager:
         if self.center_line is None or self.frame_width is None:
             return None
         
-        # Calculate delta threshold (percentage of frame width)
-        delta = int(self.frame_width * self.config.cross_delta_percent)
-        
-        # Define the zones
-        left_zone = self.center_line - delta
-        right_zone = self.center_line + delta
-        
         # Determine current side
-        if curr_x < left_zone:
+        if curr_x < self.center_line:
             current_side = "left"
-        elif curr_x > right_zone:
+        elif curr_x > self.center_line:
             current_side = "right"
         else:
-            current_side = "center"  # In the buffer zone
+            current_side = "center"  # Exactly on the center line (rare)
         
         direction = None
         
-        # Check for crossing: only trigger when moving from one clear side to the other clear side
+        # Check for crossing: trigger when moving from one side to the other side
         if fish_state.last_side == "left" and current_side == "right":
             direction = "Downstream"
         elif fish_state.last_side == "right" and current_side == "left":
             direction = "Upstream"
         
-        # Update the fish's last known side (only when in a clear zone, not center)
+        # Update the fish's last known side (excluding exact center line position)
         if current_side in ["left", "right"]:
             fish_state.last_side = current_side
             

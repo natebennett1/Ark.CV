@@ -40,7 +40,6 @@
     "trail_max_length": 30,
     "stability_window": 3,
     "adipose_window": 3,
-    "cross_delta_percent": 0.03,
     "count_cooldown_frames": 0
   },
   "hitl": {
