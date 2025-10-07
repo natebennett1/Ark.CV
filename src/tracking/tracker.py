@@ -7,7 +7,7 @@ center line crossing, and count debouncing.
 
 from typing import Optional, Tuple, Dict, Set, TYPE_CHECKING
 
-from ..config.settings import TrackingConfig
+from ..config.settings import CountingConfig
 from .fish_state import FishStateManager, FishState
 
 
@@ -21,13 +21,13 @@ class TrackingManager:
     - Track state management
     """
     
-    def __init__(self, tracking_config: TrackingConfig):
-        self.config = tracking_config
-        self.state_manager = FishStateManager(tracking_config)
+    def __init__(self, counting_config: CountingConfig):
+        self.config = counting_config
+        self.state_manager = FishStateManager(counting_config)
         self.center_line: Optional[int] = None
         self.frame_width: Optional[int] = None
     
-    def initialize_frame_info(self, frame_width: int, frame_height: int):
+    def initialize_frame_info(self, frame_width: int):
         """Initialize frame dimensions and center line position."""
         self.frame_width = frame_width
         self.center_line = int(frame_width * self.config.center_line_position)
@@ -151,11 +151,4 @@ class TrackingManager:
     def _calculate_fish_length(self, x1: int, y1: int, x2: int, y2: int) -> float:
         """Calculate fish length from bounding box diagonal."""
         diagonal_pixels = ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
-        # Use config pixels_per_inch if available, otherwise use default
-        pixels_per_inch = getattr(self.config, 'pixels_per_inch', 25.253)
-        return diagonal_pixels / pixels_per_inch
-    
-    @property
-    def center_line_position(self) -> Optional[int]:
-        """Get the center line position in pixels."""
-        return self.center_line
+        return diagonal_pixels / self.config.pixels_per_inch

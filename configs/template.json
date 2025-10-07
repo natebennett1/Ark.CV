@@ -9,7 +9,7 @@
     "adipose_min_confidence": 0.50,
     "adipose_expand_ratio": 0.20
   },
-  "tracker": {
+  "botsort": {
     "tracker_type": "botsort",
     "track_buffer": 30,
     "match_thresh": 0.8,
@@ -22,7 +22,7 @@
     "max_time_lost": 30
   },
   "classification": {
-    "unknown_threshold": 0.45,
+    "unknown_threshold": 0.25,
     "min_class_confidence": {
       "BullTrout": 0.80
     },
@@ -35,7 +35,7 @@
       "BullTrout": {"adult": 12}
     }
   },
-  "tracking": {
+  "counting": {
     "center_line_position": 0.50,
     "trail_max_length": 30,
     "stability_window": 3,

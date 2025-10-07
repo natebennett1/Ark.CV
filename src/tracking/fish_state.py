@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from collections import deque, defaultdict
 from typing import Dict, Optional
 
-from ..config.settings import TrackingConfig
+from ..config.settings import CountingConfig
 
 
 @dataclass
@@ -171,11 +171,11 @@ class FishStateManager:
     the video processing pipeline.
     """
     
-    def __init__(self, tracking_config: TrackingConfig):
-        self.config = tracking_config
+    def __init__(self, counting_config: CountingConfig):
+        self.config = counting_config
         self.fish_states: Dict[int, FishState] = {}
         self.track_trails: Dict[int, deque] = defaultdict(
-            lambda: deque(maxlen=tracking_config.trail_max_length)
+            lambda: deque(maxlen=counting_config.trail_max_length)
         )
     
     def get_or_create_state(self, track_id: int, initial_x: int = 0, initial_y: int = 0) -> FishState:
@@ -217,11 +217,6 @@ class FishStateManager:
     def get_state(self, track_id: int) -> Optional[FishState]:
         """Get state for a specific track ID."""
         return self.fish_states.get(track_id)
-    
-    def calculate_fish_length(self, x1: int, y1: int, x2: int, y2: int) -> float:
-        """Calculate fish length from bounding box."""
-        diagonal_pixels = ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
-        return diagonal_pixels / self.config.pixels_per_inch if hasattr(self.config, 'pixels_per_inch') else diagonal_pixels / 25.253
 
 
 def majority_vote(vote_queue: deque) -> Optional[str]:

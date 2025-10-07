@@ -12,7 +12,7 @@ import numpy as np
 from ultralytics import YOLO
 from ultralytics.engine.results import Results
 
-from ..config.settings import ModelConfig, TrackerConfig
+from ..config.settings import ModelConfig, BotsortConfig
 
 
 class FishDetector:
@@ -22,9 +22,9 @@ class FishDetector:
     This class handles model loading, inference, and tracking in a stateful manner.
     """
     
-    def __init__(self, model_config: ModelConfig, tracker_config: TrackerConfig):
+    def __init__(self, model_config: ModelConfig, botsort_config: BotsortConfig):
         self.model_config = model_config
-        self.tracker_config = tracker_config
+        self.botsort_config = botsort_config
         self.model: Optional[YOLO] = None
         self.device = self._determine_device()
         self._tracker_cfg_dict = self._build_tracker_config()
@@ -38,16 +38,16 @@ class FishDetector:
     def _build_tracker_config(self) -> Dict[str, Any]:
         """Build tracker configuration dictionary."""
         return {
-            "tracker_type": self.tracker_config.tracker_type,
-            "track_buffer": self.tracker_config.track_buffer,
-            "match_thresh": self.tracker_config.match_thresh,
-            "proximity_thresh": self.tracker_config.proximity_thresh,
-            "appearance_thresh": self.tracker_config.appearance_thresh,
-            "gmc_method": self.tracker_config.gmc_method,
-            "new_track_thresh": self.tracker_config.new_track_thresh,
-            "track_high_thresh": self.tracker_config.track_high_thresh,
-            "track_low_thresh": self.tracker_config.track_low_thresh,
-            "max_time_lost": self.tracker_config.max_time_lost
+            "tracker_type": self.botsort_config.tracker_type,
+            "track_buffer": self.botsort_config.track_buffer,
+            "match_thresh": self.botsort_config.match_thresh,
+            "proximity_thresh": self.botsort_config.proximity_thresh,
+            "appearance_thresh": self.botsort_config.appearance_thresh,
+            "gmc_method": self.botsort_config.gmc_method,
+            "new_track_thresh": self.botsort_config.new_track_thresh,
+            "track_high_thresh": self.botsort_config.track_high_thresh,
+            "track_low_thresh": self.botsort_config.track_low_thresh,
+            "max_time_lost": self.botsort_config.max_time_lost
         }
     
     def _patch_torch_load(self):

@@ -28,7 +28,7 @@ class ModelConfig:
 
 
 @dataclass
-class TrackerConfig:
+class BotsortConfig:
     """Configuration for BoT-SORT tracker."""
     tracker_type: str = "botsort"
     track_buffer: int = 30
@@ -49,9 +49,6 @@ class ClassificationConfig:
     min_class_confidence: Dict[str, float] = field(default_factory=lambda: {
         "BullTrout": 0.80
     })
-    
-    # Size calibration
-    pixels_per_inch: float = 25.253
     size_thresholds: Dict[str, Dict[str, float]] = field(default_factory=lambda: {
         "Chinook": {"adult": 22, "jack": 12, "mini_jack": 0},
         "Coho": {"adult": 18, "jack": 12},
@@ -62,8 +59,9 @@ class ClassificationConfig:
 
 
 @dataclass
-class TrackingConfig:
-    """Configuration for fish tracking and direction detection."""
+class CountingConfig:
+    """Configuration for fish counting and direction detection."""
+    pixels_per_inch: float = 25.253
     center_line_position: float = 0.50  # Fraction of frame width
     trail_max_length: int = 30
     stability_window: int = 3  # Frames for majority vote
@@ -72,9 +70,9 @@ class TrackingConfig:
 
 
 @dataclass
-class HITLConfig:
-    """Configuration for Human-in-the-Loop data collection."""
-    output_dir: str = "./hitl_queue"
+class ManualReviewConfig:
+    """Configuration for Manual Review data collection."""
+    output_dir: str = "./manual_review"
     lowconf_threshold: float = 0.80
     count_review_threshold: float = 0.80
     expand_ratio: float = 0.15
@@ -118,10 +116,10 @@ class PipelineConfig:
     
     # Sub-configurations
     model: ModelConfig = field(default_factory=ModelConfig)
-    tracker: TrackerConfig = field(default_factory=TrackerConfig)
+    botsort: BotsortConfig = field(default_factory=BotsortConfig)
     classification: ClassificationConfig = field(default_factory=ClassificationConfig)
-    tracking: TrackingConfig = field(default_factory=TrackingConfig)
-    hitl: HITLConfig = field(default_factory=HITLConfig)
+    counting: CountingConfig = field(default_factory=CountingConfig)
+    hitl: ManualReviewConfig = field(default_factory=ManualReviewConfig)
     video: VideoConfig = field(default_factory=VideoConfig)
     io: IOConfig = field(default_factory=IOConfig)
     
@@ -140,9 +138,9 @@ class PipelineConfig:
         if not self.io.video_output_path:
             self.io.video_output_path = os.path.join(output_dir, f"annotated_video_{self._file_timestamp}.mp4")
         
-        # Update HITL output directory to be inside the timestamped folder
-        if self.hitl.output_dir == "./hitl_queue":
-            self.hitl.output_dir = os.path.join(output_dir, "hitl_queue")
+        # Update Manual Review output directory to be inside the timestamped folder
+        if self.hitl.output_dir == "./manual_review":
+            self.hitl.output_dir = os.path.join(output_dir, "manual_review")
             
         if not self.io.date_str:
             self.io.date_str = datetime.now().strftime("%Y-%m-%d")
@@ -170,7 +168,7 @@ class PipelineConfig:
                 errors.append(f"Invalid date format '{self.io.date_str}'. Use YYYY-MM-DD.")
         
         # Validate numeric ranges
-        if not 0 <= self.tracking.center_line_position <= 1:
+        if not 0 <= self.counting.center_line_position <= 1:
             errors.append("Center line position must be between 0 and 1")
             
         if not 0 <= self.model.confidence_threshold <= 1:
@@ -202,9 +200,9 @@ class PipelineConfig:
         """Convert configuration to dictionary for serialization."""
         return {
             'model': self.model.__dict__,
-            'tracker': self.tracker.__dict__, 
+            'botsort': self.botsort.__dict__, 
             'classification': self.classification.__dict__,
-            'tracking': self.tracking.__dict__,
+            'counting': self.counting.__dict__,
             'hitl': self.hitl.__dict__,
             'video': self.video.__dict__,
             'io': self.io.__dict__

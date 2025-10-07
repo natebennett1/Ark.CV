@@ -14,8 +14,14 @@ from src.config import PipelineConfig, ConfigLoader
 from src.detection import FishDetector, AdiposeDetector
 from src.tracking import TrackingManager
 from src.classification import SpeciesClassifier
-from src.quality import HITLCollector
+from src.quality import ManualReviewCollector
 from src.io import VideoProcessor, OutputWriter
+
+# Open CV uses BGR, not RGB
+COLOR_RED = (0, 0, 255)
+COLOR_GREEN = (0, 255, 0)
+COLOR_YELLOW = (0, 255, 255)
+COLOR_LIGHT_BLUE = (255, 165, 0)
 
 
 class FishCountingPipeline:
@@ -32,7 +38,7 @@ class FishCountingPipeline:
         self.adipose_detector = None
         self.tracking_manager = None
         self.species_classifier = None
-        self.hitl_collector = None
+        self.manual_review_collector = None
         self.video_processor = None
         self.output_writer = None
         
@@ -48,11 +54,11 @@ class FishCountingPipeline:
         input_date = datetime.strptime(self.config.io.date_str, "%Y-%m-%d").date()
         
         # Initialize detectors
-        self.detector = FishDetector(self.config.model, self.config.tracker)
+        self.detector = FishDetector(self.config.model, self.config.botsort)
         self.adipose_detector = AdiposeDetector(self.config.model)
         
         # Initialize tracking
-        self.tracking_manager = TrackingManager(self.config.tracking)
+        self.tracking_manager = TrackingManager(self.config.counting)
         
         # Initialize classification
         self.species_classifier = SpeciesClassifier(
@@ -61,8 +67,8 @@ class FishCountingPipeline:
             input_date
         )
         
-        # Initialize HITL collector
-        self.hitl_collector = HITLCollector(
+        # Initialize Manual Review collector
+        self.manual_review_collector = ManualReviewCollector(
             self.config.hitl,
             self.config.io.location,
             self.config.io.date_str
@@ -79,18 +85,18 @@ class FishCountingPipeline:
         height, width = frame.shape[:2]
         
         # Draw center line
-        cv2.line(frame, (center_line, 0), (center_line, height), (0, 255, 0), 3)
+        cv2.line(frame, (center_line, 0), (center_line, height), COLOR_GREEN, 3)
         
         # Draw live counts
         y_offset = 60
         cv2.putText(frame, "Live Counts:", (10, y_offset), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.8, COLOR_RED, 2)
         
         for species, counts in sorted(species_counts.items()):
             y_offset += 20
             count_text = f"{species}: Up {counts['Upstream']} Down {counts['Downstream']}"
             cv2.putText(frame, count_text, (10, y_offset),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 2)
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, COLOR_RED, 2)
     
     def _draw_detection_annotations(self, frame, bbox, species, confidence, 
                                   length, direction, center_line, crossing_count):
@@ -99,7 +105,7 @@ class FishCountingPipeline:
         center_x = (x1 + x2) // 2
         
         # Choose color based on position relative to center line
-        color = (255, 165, 0) if center_x < center_line else (0, 255, 255)
+        color = COLOR_LIGHT_BLUE if center_x < center_line else COLOR_YELLOW
         
         # Draw bounding box
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
@@ -121,7 +127,7 @@ class FishCountingPipeline:
         
         # Determine color based on current position
         current_x = trail[-1][0] if trail else 0
-        color = (255, 165, 0) if current_x < center_line else (0, 255, 255)
+        color = COLOR_LIGHT_BLUE if current_x < center_line else COLOR_YELLOW
         
         # Draw trail lines
         for i in range(1, len(trail)):
@@ -158,9 +164,11 @@ class FishCountingPipeline:
     def _process_video(self, video_proc: VideoProcessor, output: OutputWriter) -> Dict[str, Any]:
         """Process the video frame by frame."""
         # Initialize tracking with video dimensions
-        video_info = video_proc.get_video_info()
-        self.tracking_manager.initialize_frame_info(video_info["width"], video_info["height"])
-        center_line = self.tracking_manager.center_line_position
+        self.tracking_manager.initialize_frame_info(video_proc.width)
+        
+        # Set center line for manual review collector
+        center_line = self.tracking_manager.center_line
+        self.manual_review_collector.set_center_line_position(center_line)
         
         print(f"Starting video processing...")
         print(f"Center line at pixel {center_line}")
@@ -193,12 +201,14 @@ class FishCountingPipeline:
                 for bbox, track_id, confidence, class_id in zip(boxes, track_ids, confidences, class_ids):
                     self._process_detection(
                         frame, bbox, track_id, confidence, class_id,
-                        frame_number, timestamp_sec, video_proc.get_video_info()["fps"],
+                        frame_number, timestamp_sec, video_proc.fps,
                         output, center_line, live_species_counts, video_proc
                     )
             
-            # HITL garbage collection
-            self.hitl_collector.garbage_collect_inactive(frame_number)
+            # Manual review garbage collection
+            self.manual_review_collector.garbage_collect_inactive(frame_number)
+            # End frame processing for occlusion detection
+            self.manual_review_collector.end_frame_processing(frame, frame_number, timestamp_sec, os.path.basename(self.config.io.video_path))
             
             # Write frame and display
             video_proc.write_frame(frame)
@@ -214,7 +224,8 @@ class FishCountingPipeline:
                 print(f"Frame {frame_number}: {fps:.1f} FPS | Total fish: {total_fish}")
         
         # Finalize processing
-        self.hitl_collector.flush_all_tracks()
+        # Finalize manual review collector to save any remaining peak occlusions
+        self.manual_review_collector.finalize_processing()
         output.print_final_summary()
         
         # Return results
@@ -225,11 +236,11 @@ class FishCountingPipeline:
             "fps": self.frames_processed / elapsed_total if elapsed_total > 0 else 0,
             "species_counts": output.get_species_counts(),
             "summary_stats": output.get_summary_stats(),
-            "hitl_stats": self.hitl_collector.get_stats()
+            "manual_review_stats": self.manual_review_collector.get_stats()
         }
     
     def _process_detection(self, frame, bbox, track_id, confidence, class_id,
-                          frame_number, timestamp_sec, fps, output, center_line, live_species_counts, video_proc):
+                          frame_number, timestamp_sec, fps, output, center_line, live_species_counts, video_proc: VideoProcessor):
         """Process a single detection through the full pipeline."""
         x1, y1, x2, y2 = bbox
         center_x, center_y = (x1 + x2) // 2, (y1 + y2) // 2
@@ -238,9 +249,7 @@ class FishCountingPipeline:
         raw_species = self.detector.get_class_name(class_id)
         
         # Classify species with business rules
-        species_final, classification_reason = self.species_classifier.classify_detection(
-            raw_species, confidence
-        )
+        species_final, classification_reason = self.species_classifier.classify_detection(raw_species, confidence)
         
         # Check for adipose refinement
         if self.adipose_detector.is_loaded and "_U" in species_final:
@@ -248,12 +257,10 @@ class FishCountingPipeline:
                 frame, bbox
             )
             if adipose_status in {"Present", "Absent"}:
-                species_final, _ = self.species_classifier.classify_detection(
-                    raw_species, confidence, adipose_status
-                )
+                species_final = self.species_classifier.apply_adipose_refinement(species_final, adipose_status)
         
-        # HITL observation
-        self.hitl_collector.observe_detection(
+        # Manual review observation
+        self.manual_review_collector.observe_detection(
             frame=frame,
             frame_idx=frame_number,
             timestamp_sec=timestamp_sec,
@@ -286,8 +293,7 @@ class FishCountingPipeline:
             
             # Write to CSV
             video_timestamp = output.format_video_timestamp(frame_number, fps)
-            video_info = video_proc.get_video_info()
-            frame_width, frame_height = video_info["width"], video_info["height"]
+            frame_width, frame_height = video_proc.width, video_proc.height
             x_percent = (center_x / frame_width) * 100 if frame_width > 0 else 0
             y_percent = (center_y / frame_height) * 100 if frame_height > 0 else 0
             
@@ -306,9 +312,9 @@ class FishCountingPipeline:
             print(f"COUNTED: Track {track_id} ({stable_species}, {fish_state.length_inches:.1f}in) "
                   f"{direction} at {video_timestamp} - Crossing #{fish_state.crossing_count}")
             
-            # Flag for HITL review if confidence is low
+            # Flag for manual review if confidence is low
             if confidence < self.config.hitl.count_review_threshold:
-                self.hitl_collector.flag_count_event(
+                self.manual_review_collector.flag_crossing_event(
                     frame=frame,
                     frame_idx=frame_number,
                     timestamp_sec=timestamp_sec,
@@ -319,8 +325,6 @@ class FishCountingPipeline:
                     track_id=track_id,
                     direction=direction
                 )
-                print(f"⚠️  FLAGGED for review: Track {track_id} counted as {stable_species} "
-                      f"with confidence {confidence:.2f} (<{self.config.hitl.count_review_threshold:.2f})")
         
         # Draw annotations
         self._draw_detection_annotations(
