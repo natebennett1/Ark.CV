@@ -7,7 +7,7 @@ and exports both an annotated video and CSV-based analytics.
 
 ## Requirements
 
-- Python 3.9+
+- Python 3.12
 - GPU optional (CUDA acceleration improves throughput).
 - Noteworthy Python dependencies (this README will walk you through installing them later):
   - `ultralytics==8.2.0`
