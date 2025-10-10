@@ -12,7 +12,6 @@ from typing import Dict, Optional
 from ..config.settings import CountingConfig
 
 
-@dataclass
 class FishState:
     """
     State information for a single tracked fish.
@@ -20,36 +19,27 @@ class FishState:
     This class maintains temporal information about a fish track including
     species classification votes, position history, and crossing counts.
     """
-    
-    track_id: int
-    last_x: int = 0
-    last_y: int = 0
-    length_inches: float = 0.0
-    last_confidence: float = 0.0
-    last_count_frame: int = -1000000  # Frame of last count event
-    crossing_count: int = 0
-    
-    # Crossing detection state
-    last_side: Optional[str] = None  # "left", "right", or None (in center zone)
-    
-    # Anti-oscillation tracking
-    last_crossing_direction: Optional[str] = None  # Track last crossing direction
-    consecutive_opposite_crossings: int = 0  # Count of back-and-forth crossings
-    
-    # Temporal voting queues
-    species_votes: deque = field(default_factory=deque)
-    adipose_votes: deque = field(default_factory=deque)
-    
-    def __post_init__(self):
-        """Initialize deques with proper maxlen if not set."""
-        if not hasattr(self.species_votes, 'maxlen') or self.species_votes.maxlen is None:
-            # Convert to proper deque with maxlen
-            items = list(self.species_votes) if self.species_votes else []
-            self.species_votes = deque(items, maxlen=3)  # Default window
-            
-        if not hasattr(self.adipose_votes, 'maxlen') or self.adipose_votes.maxlen is None:
-            items = list(self.adipose_votes) if self.adipose_votes else []
-            self.adipose_votes = deque(items, maxlen=3)  # Default window
+
+    def __init__(self, track_id: int, last_x: int = 0, last_y: int = 0, 
+                 stability_window: int = 3, adipose_window: int = 3):
+        self.track_id = track_id
+        self.last_x = last_x
+        self.last_y = last_y
+        self.length_inches = 0.0
+        self.last_confidence = 0.0
+        self.last_count_frame = -1000000
+        self.crossing_count = 0
+        
+        # Crossing detection state
+        self.last_side: Optional[str] = None
+        
+        # Anti-oscillation tracking
+        self.last_crossing_direction: Optional[str] = None
+        self.consecutive_opposite_crossings = 0
+        
+        # Temporal voting queues
+        self.species_votes = deque(maxlen=stability_window)
+        self.adipose_votes = deque(maxlen=adipose_window)
     
     def update_position(self, x: int, y: int):
         """Update the fish's position."""

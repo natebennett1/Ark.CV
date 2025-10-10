@@ -390,7 +390,7 @@ class OcclusionDetector:
     """
     
     def __init__(self, proximity_threshold: float = 0.3, 
-                 iou_weight: float = 0.6, distance_weight: float = 0.4):
+                 iou_weight: float = 0.8, distance_weight: float = 0.2):
         self.proximity_threshold = proximity_threshold
         self.iou_weight = iou_weight
         self.distance_weight = distance_weight
@@ -419,6 +419,15 @@ class OcclusionDetector:
             for j in range(i + 1, len(detections)):
                 track1_id, bbox1 = detections[i]
                 track2_id, bbox2 = detections[j]
+
+                # Only capture occlusions on or before the center line
+                if center_line is not None:
+                    center1_x = (bbox1[0] + bbox1[2]) / 2
+                    center2_x = (bbox2[0] + bbox2[2]) / 2
+                    
+                    # If BOTH fish are past (left of) the center line, skip
+                    if center1_x < center_line and center2_x < center_line:
+                        continue
                 
                 # Calculate proximity score
                 iou = self._calculate_iou(bbox1, bbox2)
@@ -434,18 +443,6 @@ class OcclusionDetector:
                     if occlusion_key in self.recorded_pairs:
                         continue
                     
-                    # Calculate center positions for prioritization
-                    center1 = ((bbox1[0] + bbox1[2]) / 2, (bbox1[1] + bbox1[3]) / 2)
-                    center2 = ((bbox2[0] + bbox2[2]) / 2, (bbox2[1] + bbox2[3]) / 2)
-                    
-                    # Check if near center line
-                    near_center_line = False
-                    if center_line is not None:
-                        # Consider "near" as within 100 pixels of center line
-                        buffer = 100
-                        near_center_line = (abs(center1[0] - center_line) < buffer or 
-                                          abs(center2[0] - center_line) < buffer)
-                    
                     # Record this occlusion
                     self.active_occlusions[occlusion_key] = frame_idx
                     self.recorded_pairs.add(occlusion_key)
@@ -453,11 +450,7 @@ class OcclusionDetector:
                     occlusions.append({
                         "occlusion_key": occlusion_key,
                         "tracks": [(track1_id, bbox1), (track2_id, bbox2)],
-                        "proximity_score": proximity_score,
-                        "iou": iou,
-                        "distance_score": distance_score,
-                        "near_center_line": near_center_line,
-                        "frame_idx": frame_idx
+                        "proximity_score": proximity_score
                     })
         
         return occlusions

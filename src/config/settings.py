@@ -83,8 +83,8 @@ class ManualReviewConfig:
     
     # Occlusion detection thresholds
     occlusion_proximity_threshold: float = 0.3  # Combined proximity score threshold
-    occlusion_iou_weight: float = 0.6  # Weight for IoU in proximity calculation
-    occlusion_distance_weight: float = 0.4  # Weight for distance in proximity calculation
+    occlusion_iou_weight: float = 0.8  # Weight for IoU in proximity calculation
+    occlusion_distance_weight: float = 0.2  # Weight for distance in proximity calculation
 
 
 @dataclass
