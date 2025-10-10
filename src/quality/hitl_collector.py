@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional, Set
 import numpy as np
 
-from ..config.settings import HITLConfig
+from ..config.settings import ManualReviewConfig
 
 
 class HITLCollector:
@@ -25,7 +25,7 @@ class HITLCollector:
     for tracks that need manual review due to low confidence or ambiguous classification.
     """
     
-    def __init__(self, config: HITLConfig, location: str, date_str: str):
+    def __init__(self, config: ManualReviewConfig, location: str, date_str: str):
         self.config = config
         self.location = location
         self.date_str = date_str

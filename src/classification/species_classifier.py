@@ -26,17 +26,13 @@ class SpeciesClassifier:
         self.check_date = check_date
         self.species_rules = SpeciesRules()
     
-    def classify_detection(self, 
-                          raw_species: str, 
-                          confidence: float,
-                          adipose_status: Optional[str] = None) -> Tuple[str, str]:
+    def classify_detection(self, raw_species: str, confidence: float) -> Tuple[str, str]:
         """
         Classify a detection into final species category.
         
         Args:
             raw_species: Raw species name from the model
             confidence: Detection confidence score
-            adipose_status: Optional adipose fin status ("Present", "Absent", "Unknown")
             
         Returns:
             Tuple of (final_species, reasoning) where reasoning explains the classification
@@ -51,20 +47,25 @@ class SpeciesClassifier:
             return "Unknown", f"Confidence {confidence:.3f} below threshold {min_confidence:.3f}"
         
         # Step 3: Check location and seasonal rules
-        final_species = self.species_rules.validate_species_classification(
-            normalized_species, self.location, self.check_date, confidence, min_confidence
-        )
+        final_species = self.species_rules.validate_species_classification(normalized_species, base_species, self.location, self.check_date)
         
         if final_species == "Unknown":
             return "Unknown", f"Species not allowed at {self.location} on {self.check_date}"
         
-        # Step 4: Apply adipose fin refinement for salmonids
-        if adipose_status and self._is_salmonid(base_species):
-            refined_species = self._apply_adipose_refinement(final_species, adipose_status)
-            if refined_species != final_species:
-                return refined_species, f"Adipose fin status: {adipose_status}"
-        
         return final_species, "Classification successful"
+    
+    def apply_adipose_refinement(self, detected_species: str, adipose_status: str) -> str:
+        """
+        Apply adipose fin refinement to a detected species.
+        
+        Args:
+            detected_species: Detected species name
+            adipose_status: Adipose fin status ("Present", "Absent")
+            
+        Returns:
+            Refined species name with adipose suffix
+        """
+        return self.species_rules.apply_adipose_refinement(detected_species, adipose_status)
     
     def _get_minimum_confidence(self, base_species: str) -> float:
         """Get the minimum confidence threshold for a base species."""
@@ -72,39 +73,6 @@ class SpeciesClassifier:
             self.config.unknown_threshold,
             self.config.min_class_confidence.get(base_species, self.config.unknown_threshold)
         )
-    
-    def _is_salmonid(self, base_species: str) -> bool:
-        """Check if a species is a salmonid that can have adipose fin classification."""
-        salmonids = {"Chinook", "Coho", "Sockeye", "Steelhead"}
-        return base_species in salmonids
-    
-    def _apply_adipose_refinement(self, current_species: str, adipose_status: str) -> str:
-        """
-        Apply adipose fin refinement to a salmonid classification.
-        
-        Args:
-            current_species: Current species classification
-            adipose_status: Adipose fin status ("Present", "Absent", "Unknown")
-            
-        Returns:
-            Refined species classification with adipose suffix
-        """
-        if "_" not in current_species:
-            # No existing adipose classification, add it
-            base = current_species
-            suffix = self.species_rules.adipose_tag_from_words(adipose_status)
-            return f"{base}_{suffix}"
-        
-        # Extract base and current suffix
-        base, current_suffix = current_species.split("_", 1)
-        
-        # Only refine if current classification is uncertain (U suffix)
-        if current_suffix == "U" and adipose_status in {"Present", "Absent"}:
-            new_suffix = self.species_rules.adipose_tag_from_words(adipose_status)
-            return f"{base}_{new_suffix}"
-        
-        # Keep current classification
-        return current_species
     
     def get_allowed_species(self) -> set:
         """Get the set of species allowed at the current location."""

@@ -177,16 +177,6 @@ class VideoProcessor:
         key = cv2.waitKey(1) & 0xFF
         return key != ord('q')
     
-    def get_video_info(self) -> dict:
-        """Get video information as a dictionary."""
-        return {
-            "width": self.width,
-            "height": self.height,
-            "fps": self.fps,
-            "total_frames": self.total_frames,
-            "duration_seconds": self.total_frames / self.fps if self.fps > 0 else 0
-        }
-    
     def cleanup(self):
         """Clean up video resources."""
         if self.cap is not None:
@@ -213,18 +203,3 @@ class VideoProcessor:
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit with cleanup."""
         self.cleanup()
-
-
-def calculate_fish_length(x1: int, y1: int, x2: int, y2: int, pixels_per_inch: float = 25.253) -> float:
-    """
-    Calculate fish length from bounding box diagonal.
-    
-    Args:
-        x1, y1, x2, y2: Bounding box coordinates
-        pixels_per_inch: Calibration factor
-        
-    Returns:
-        Fish length in inches
-    """
-    diagonal_pixels = ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
-    return diagonal_pixels / pixels_per_inch
