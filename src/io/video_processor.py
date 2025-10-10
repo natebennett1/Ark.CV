@@ -128,10 +128,6 @@ class VideoProcessor:
             
             frame_count += 1
             
-            # Apply frame skipping if configured
-            if self.video_config.frame_skip > 0 and frame_count % (self.video_config.frame_skip + 1) != 1:
-                continue
-            
             # Calculate timestamp
             timestamp_sec = (frame_count / self.fps) if self.fps > 0 else 0
             

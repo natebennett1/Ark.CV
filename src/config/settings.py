@@ -73,13 +73,18 @@ class CountingConfig:
 
 @dataclass
 class ManualReviewConfig:
-    """Configuration for Manual Review data collection."""
+    """Configuration for Manual Review data collection - Occlusion video clips."""
     output_dir: str = "./manual_review"
-    lowconf_threshold: float = 0.80
-    count_review_threshold: float = 0.80
-    expand_ratio: float = 0.15
-    track_gap_frames: int = 45
-    enable_deduplication: bool = True
+    
+    # Video clip settings
+    clip_pre_event_sec: float = 1.5  # Seconds before occlusion peak to include
+    clip_post_event_sec: float = 2.0  # Seconds after occlusion peak to include
+    clip_codec: str = "mp4v"  # Video codec for clips (mp4v, avc1, etc.)
+    
+    # Occlusion detection thresholds
+    occlusion_proximity_threshold: float = 0.3  # Combined proximity score threshold
+    occlusion_iou_weight: float = 0.6  # Weight for IoU in proximity calculation
+    occlusion_distance_weight: float = 0.4  # Weight for distance in proximity calculation
 
 
 @dataclass
@@ -88,7 +93,6 @@ class VideoConfig:
     enable_display: bool = False
     save_output_video: bool = True
     output_video_codec: str = "mp4v"
-    frame_skip: int = 0  # Process every nth frame (0 = no skipping)
 
 
 @dataclass
@@ -178,25 +182,6 @@ class PipelineConfig:
         
         if errors:
             raise ValueError("Configuration validation failed:\n" + "\n".join(f"- {e}" for e in errors))
-    
-    @classmethod
-    def from_legacy_constants(cls, **overrides) -> 'PipelineConfig':
-        """Create config from the legacy constants in the original script."""
-        config = cls()
-        
-        # Apply any overrides
-        for key, value in overrides.items():
-            if hasattr(config, key):
-                setattr(config, key, value)
-            else:
-                # Try to find nested attribute
-                parts = key.split('.')
-                if len(parts) == 2:
-                    section, attr = parts
-                    if hasattr(config, section):
-                        setattr(getattr(config, section), attr, value)
-        
-        return config
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert configuration to dictionary for serialization."""

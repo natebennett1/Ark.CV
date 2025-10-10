@@ -46,17 +46,17 @@
   },
   "hitl": {
     "output_dir": "./hitl_queue",
-    "lowconf_threshold": 0.80,
-    "count_review_threshold": 0.80,
-    "expand_ratio": 0.15,
-    "track_gap_frames": 45,
-    "enable_deduplication": true
+    "clip_pre_event_sec": 1.5,
+    "clip_post_event_sec": 2.0,
+    "clip_codec": "mp4v",
+    "occlusion_proximity_threshold": 0.3,
+    "occlusion_iou_weight": 0.6,
+    "occlusion_distance_weight": 0.4
   },
   "video": {
     "enable_display": false,
     "save_output_video": true,
-    "output_video_codec": "mp4v",
-    "frame_skip": 0
+    "output_video_codec": "mp4v"
   },
   "io": {
     "video_path": "C:\\Users\\user\\path\\to\\your\\video.mp4",

@@ -1,9 +1,12 @@
 """
-Manual Review Data Collector for Quality Assurance.
+Occlusion Video Clip Collector for Quality Assurance.
 
-This module collects potential issues for manual review, specifically:
-1. Low confidence crossings - fish that crossed the center line but were never confident
-2. Potential occlusions - situations where multiple tracks are close together
+This module captures short video clips when potential fish occlusions occur,
+allowing for later manual verification to ensure counting accuracy.
+
+An occlusion is detected when:
+- Multiple fish bounding boxes get close to each other (based on IoU and distance)
+- Fish are approaching or near the center line (where counts happen)
 """
 
 import os
@@ -12,321 +15,459 @@ import cv2
 import numpy as np
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Tuple
-from collections import defaultdict, deque
+from typing import Dict, Any, Optional, List, Tuple, Deque
+from collections import deque
 
 from ..config.settings import ManualReviewConfig
 
 
 class ManualReviewCollector:
     """
-    Collects potential issues for manual review.
+    Captures video clips of potential fish occlusions for manual review.
     
-    This class focuses on two main types of issues:
-    1. Low confidence crossings - fish that crossed the center line but were never confident
-    2. Potential occlusions - situations where multiple tracks are close together
+    The collector maintains a circular buffer of recent frames, and when an occlusion
+    is detected, saves a video clip containing frames before, during, and after the event.
     """
     
-    def __init__(self, config: ManualReviewConfig, location: str, date_str: str):
+    def __init__(self, config: ManualReviewConfig, location: str, date_str: str, 
+                 video_fps: float, frame_width: int, frame_height: int):
         self.config = config
         self.location = location
         self.date_str = date_str
+        self.video_fps = video_fps
+        self.frame_width = frame_width
+        self.frame_height = frame_height
         
         # Ensure output directory exists
         Path(self.config.output_dir).mkdir(parents=True, exist_ok=True)
+        self.clips_dir = os.path.join(self.config.output_dir, "occlusion_clips")
+        Path(self.clips_dir).mkdir(parents=True, exist_ok=True)
         
-        # Create subdirectories
-        self.low_conf_dir = os.path.join(self.config.output_dir, "low_confidence_crossings")
-        self.occlusion_dir = os.path.join(self.config.output_dir, "potential_occlusions")
-        Path(self.low_conf_dir).mkdir(parents=True, exist_ok=True)
-        Path(self.occlusion_dir).mkdir(parents=True, exist_ok=True)
+        # Initialize metadata CSV
+        self.metadata_csv = os.path.join(self.clips_dir, "occlusion_clips.csv")
+        self._initialize_csv()
         
-        # Initialize metadata CSVs
-        self.low_conf_csv = os.path.join(self.low_conf_dir, "low_confidence_crossings.csv")
-        self.occlusion_csv = os.path.join(self.occlusion_dir, "potential_occlusions.csv")
-        self._initialize_csv_files()
+        # Circular frame buffer for pre-event frames
+        # Buffer enough frames for the pre-event duration
+        buffer_size = int(self.config.clip_pre_event_sec * self.video_fps) + 10
+        self.frame_buffer: Deque[Tuple[np.ndarray, int, float, str]] = deque(maxlen=buffer_size)
         
-        # Track states for collection
-        self.track_states: Dict[int, Dict[str, Any]] = {}
-        self.proximity_tracker = ProximityTracker()
+        # Occlusion detection and tracking
+        self.proximity_detector = OcclusionDetector(
+            proximity_threshold=self.config.occlusion_proximity_threshold,
+            iou_weight=self.config.occlusion_iou_weight,
+            distance_weight=self.config.occlusion_distance_weight
+        )
         
-        # Frame state for occlusion detection
-        self.current_frame_detections: List[Tuple[int, Tuple[int, int, int, int]]] = []
+        # Active clip recording state
+        self.active_clips: Dict[str, ActiveClipRecorder] = {}
+        
+        # Statistics
+        self.clips_saved = 0
+        self.occlusions_detected = 0
+        self.occlusions_skipped = 0  # Skipped due to overlap prevention
+        
+        # Center line position
         self.center_line_position: Optional[int] = None
     
-    def _initialize_csv_files(self):
-        """Initialize the CSV files with headers."""
-        # Low confidence crossings CSV
-        if not os.path.exists(self.low_conf_csv):
-            with open(self.low_conf_csv, "w", newline="", encoding="utf-8") as f:
+    def _initialize_csv(self):
+        """Initialize the metadata CSV file with headers."""
+        if not os.path.exists(self.metadata_csv):
+            with open(self.metadata_csv, "w", newline="", encoding="utf-8") as f:
                 csv.writer(f).writerow([
-                    "timestamp", "location", "date", "video_name", "frame_idx", 
-                    "timestamp_sec", "track_id", "species", "confidence",
-                    "direction", "bbox_x1", "bbox_y1", "bbox_x2", "bbox_y2",
-                    "image_path", "notes"
-                ])
-        
-        # Potential occlusions CSV
-        if not os.path.exists(self.occlusion_csv):
-            with open(self.occlusion_csv, "w", newline="", encoding="utf-8") as f:
-                csv.writer(f).writerow([
-                    "timestamp", "location", "date", "video_name", "frame_idx",
-                    "timestamp_sec", "involved_tracks", "proximity_score",
-                    "near_center_line", "image_path", "notes"
+                    "timestamp", "location", "date", "video_name", 
+                    "start_frame", "peak_frame", "end_frame",
+                    "start_time_sec", "peak_time_sec", "end_time_sec",
+                    "involved_tracks", "peak_proximity_score", 
+                    "clip_path", "notes"
                 ])
     
     def set_center_line_position(self, center_line: int):
         """Set the center line position for occlusion detection."""
         self.center_line_position = center_line
     
-    def observe_detection(self, 
-                         frame: np.ndarray,
-                         frame_idx: int,
-                         timestamp_sec: float,
-                         video_name: str,
-                         bbox: Tuple[int, int, int, int],
-                         pred_class_name: str,
-                         pred_confidence: float,
-                         track_id: int,
-                         direction: Optional[str] = None):
+    def process_frame(self, frame: np.ndarray, frame_idx: int, timestamp_sec: float, 
+                     video_name: str, detections: List[Tuple[int, Tuple[int, int, int, int]]]):
         """
-        Observe a detection for potential manual review collection.
+        Process a single frame for occlusion detection and clip recording.
+        
+        Args:
+            frame: The current video frame
+            frame_idx: Frame number
+            timestamp_sec: Timestamp in seconds
+            video_name: Name of the source video
+            detections: List of (track_id, bbox) tuples for this frame
         """
-        if track_id is None:
-            return
+        # Add frame to circular buffer
+        # Only buffer frames when fish are detected or clips are actively recording
+        # This significantly reduces memory copies during empty sections of video
+        if len(detections) >= 1 or len(self.active_clips) > 0:
+            self.frame_buffer.append((frame.copy(), frame_idx, timestamp_sec, video_name))
         
-        # Update track state
-        track_state = self.track_states.get(track_id, {
-            "ever_high_confidence": False,
-            "best_confidence": 0.0,
-            "frames_seen": 0,
-            "species_votes": deque(maxlen=5),
-            "first_seen_frame": frame_idx,
-            "last_seen_frame": frame_idx,
-            "bbox_history": deque(maxlen=10)
-        })
-        
-        track_state["frames_seen"] += 1
-        track_state["last_seen_frame"] = frame_idx
-        track_state["species_votes"].append(pred_class_name)
-        track_state["bbox_history"].append(bbox)
-        track_state["best_confidence"] = max(track_state["best_confidence"], pred_confidence)
-        
-        # Check if this detection is high confidence
-        if pred_confidence >= self.config.lowconf_threshold:
-            track_state["ever_high_confidence"] = True
-        
-        self.track_states[track_id] = track_state
-        
-        # Store current frame detections for proximity analysis
-        self.current_frame_detections.append((track_id, bbox))
-    
-    def end_frame_processing(self, frame: np.ndarray, frame_idx: int, timestamp_sec: float, video_name: str):
-        """
-        Process end of frame - detect potential occlusions at peak moments only.
-        """
-        if len(self.current_frame_detections) >= 2:
-            # Check for potential occlusions - only returns peak moments
-            occlusions = self.proximity_tracker.detect_potential_occlusions(
-                self.current_frame_detections, 
+        # Detect occlusions in current frame
+        if len(detections) >= 2:
+            occlusions = self.proximity_detector.detect_occlusions(
+                detections, 
                 self.center_line_position,
                 frame_idx
             )
             
-            for occlusion_info in occlusions:
-                self._save_occlusion_event(
-                    frame, frame_idx, timestamp_sec, video_name, occlusion_info
-                )
+            for occlusion_event in occlusions:
+                self._handle_occlusion_event(occlusion_event, frame_idx, timestamp_sec)
         
-        # Clear frame detections
-        self.current_frame_detections.clear()
+        # Update active clip recorders
+        self._update_active_clips(frame, frame_idx, timestamp_sec, video_name)
     
-    def flag_crossing_event(self,
-                           frame: np.ndarray,
-                           frame_idx: int,
-                           timestamp_sec: float,
-                           video_name: str,
-                           bbox: Tuple[int, int, int, int],
-                           pred_class_name: str,
-                           pred_confidence: float,
-                           track_id: int,
-                           direction: str):
-        """
-        Flag a crossing event for review if the fish was never confident during its track.
+    def _handle_occlusion_event(self, occlusion_event: Dict[str, Any], 
+                               frame_idx: int, timestamp_sec: float):
+        """Handle a detected occlusion event."""
+        occlusion_key = occlusion_event["occlusion_key"]
         
-        Only flag crossings where the fish was NEVER confident at any point.
-        """
-        track_state = self.track_states.get(track_id)
-        
-        # Only flag if this track was never confident
-        if track_state and not track_state.get("ever_high_confidence", False):
-            # Determine the most common species from votes
-            species_votes = track_state.get("species_votes", [])
-            if species_votes:
-                species_counts = defaultdict(int)
-                for vote in species_votes:
-                    species_counts[vote] += 1
-                most_common_species = max(species_counts, key=species_counts.get)
-            else:
-                most_common_species = pred_class_name
+        # Check if we're already recording this occlusion
+        if occlusion_key in self.active_clips:
+            # Update peak if this is stronger
+            clip_recorder = self.active_clips[occlusion_key]
+            if occlusion_event["proximity_score"] > clip_recorder.peak_proximity_score:
+                clip_recorder.update_peak(frame_idx, timestamp_sec, occlusion_event)
+        else:
+            # Check if this new occlusion would overlap with any active clips
+            if self._would_overlap_with_active_clips(frame_idx):
+                # Skip this occlusion to avoid overlapping clips
+                self.occlusions_skipped += 1
+                print(f"⏭️ Skipping occlusion {occlusion_key} - would overlap with active clip")
+                return
             
-            self._save_low_confidence_crossing(
-                frame, frame_idx, timestamp_sec, video_name, bbox,
-                most_common_species, track_state["best_confidence"], 
-                track_id, direction, track_state
+            # Start new clip recording
+            self.occlusions_detected += 1
+            print(f"🔍 Occlusion detected: {occlusion_key} (score: {occlusion_event['proximity_score']:.3f})")
+            
+            # Create new clip recorder with buffered frames
+            clip_recorder = ActiveClipRecorder(
+                occlusion_key=occlusion_key,
+                occlusion_event=occlusion_event,
+                frame_idx=frame_idx,
+                timestamp_sec=timestamp_sec,
+                video_fps=self.video_fps,
+                frame_width=self.frame_width,
+                frame_height=self.frame_height,
+                config=self.config,
+                buffered_frames=list(self.frame_buffer)  # Copy current buffer
             )
+            
+            self.active_clips[occlusion_key] = clip_recorder
     
-    def _save_low_confidence_crossing(self, frame: np.ndarray, frame_idx: int, 
-                                    timestamp_sec: float, video_name: str,
-                                    bbox: Tuple[int, int, int, int], species: str,
-                                    confidence: float, track_id: int, direction: str,
-                                    track_state: Dict[str, Any]):
-        """Save a low confidence crossing event."""
-        try:
-            x1, y1, x2, y2 = bbox
-            
-            # Create annotated frame
-            annotated_frame = frame.copy()
-            cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (0, 0, 255), 3)
-            cv2.putText(annotated_frame, f"LOW CONF CROSSING: {species} {confidence:.2f}", 
-                       (x1, max(15, y1 - 10)), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-            cv2.putText(annotated_frame, f"Track {track_id} | {direction}", 
-                       (x1, y2 + 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
-            
-            # Generate filename
-            timestamp_str = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-            filename = f"low_conf_{timestamp_str}_f{frame_idx:06d}_t{track_id}_{species}_{direction}.jpg"
-            image_path = os.path.join(self.low_conf_dir, filename)
-            
-            # Save image
-            cv2.imwrite(image_path, annotated_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
-            
-            # Write to CSV
-            with open(self.low_conf_csv, "a", newline="", encoding="utf-8") as f:
-                csv.writer(f).writerow([
-                    datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                    self.location, self.date_str, video_name, frame_idx,
-                    f"{timestamp_sec:.3f}", track_id, species, f"{confidence:.4f}",
-                    direction, x1, y1, x2, y2, image_path,
-                    f"Never confident during {track_state['frames_seen']} frames"
-                ])
-                
-            print(f"💡 MANUAL REVIEW: Low confidence crossing saved - Track {track_id} ({species}) {direction}")
-            
-        except Exception as e:
-            print(f"Error saving low confidence crossing: {e}")
-    
-    def _save_occlusion_event(self, frame: np.ndarray, frame_idx: int,
-                            timestamp_sec: float, video_name: str,
-                            occlusion_info: Dict[str, Any]):
-        """Save a potential occlusion event."""
-        try:
-            # Create annotated frame
-            annotated_frame = frame.copy()
-            
-            # Draw all involved tracks
-            involved_tracks = occlusion_info["tracks"]
-            # yellow, purple, cyan, light green
-            colors = [(0, 255, 255), (255, 0, 255), (255, 255, 0), (128, 255, 128)]
-            
-            for i, (track_id, bbox) in enumerate(involved_tracks):
-                x1, y1, x2, y2 = bbox
-                color = colors[i % len(colors)]
-                cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), color, 3)
-                cv2.putText(annotated_frame, f"T{track_id}", 
-                           (x1, max(15, y1 - 10)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
-            
-            # Add occlusion warning
-            cv2.putText(annotated_frame, "POTENTIAL OCCLUSION", 
-                       (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 3)
-            
-            # Generate filename
-            timestamp_str = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-            track_ids_str = "_".join(str(t[0]) for t in involved_tracks)
-            filename = f"occlusion_{timestamp_str}_f{frame_idx:06d}_tracks_{track_ids_str}.jpg"
-            image_path = os.path.join(self.occlusion_dir, filename)
-            
-            # Save image
-            cv2.imwrite(image_path, annotated_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
-            
-            # Write to CSV
-            with open(self.occlusion_csv, "a", newline="", encoding="utf-8") as f:
-                csv.writer(f).writerow([
-                    datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                    self.location, self.date_str, video_name, frame_idx,
-                    f"{timestamp_sec:.3f}", track_ids_str, 
-                    f"{occlusion_info['proximity_score']:.4f}",
-                    occlusion_info.get("near_center_line", False), image_path,
-                    f"Potential occlusion between {len(involved_tracks)} tracks"
-                ])
-                
-            print(f"🔍 MANUAL REVIEW: Peak occlusion moment saved - Tracks {track_ids_str} (score: {occlusion_info['proximity_score']:.2f})")
-            
-        except Exception as e:
-            print(f"Error saving occlusion event: {e}")
-    
-    def garbage_collect_inactive(self, current_frame_idx: int):
-        """Clean up inactive track states."""
-        inactive_tracks = []
-        for track_id, state in self.track_states.items():
-            # Remove tracks that haven't been seen for a while
-            if current_frame_idx - state.get("last_seen_frame", current_frame_idx) > self.config.track_gap_frames:
-                inactive_tracks.append(track_id)
+    def _would_overlap_with_active_clips(self, new_frame_idx: int) -> bool:
+        """
+        Check if a new occlusion starting at new_frame_idx would overlap with any active clips.
         
-        for track_id in inactive_tracks:
-            self.track_states.pop(track_id, None)
+        A clip starting at new_frame_idx will eventually span from:
+        (new_frame_idx - pre_event_frames) to (new_frame_idx + post_event_frames)
+        
+        We check if this range would overlap with any currently recording clip's range.
+        """
+        if not self.active_clips:
+            return False
+        
+        # Calculate the frame range this new clip would cover
+        pre_event_frames = int(self.config.clip_pre_event_sec * self.video_fps)
+        post_event_frames = int(self.config.clip_post_event_sec * self.video_fps)
+        new_start = new_frame_idx - pre_event_frames
+        new_end = new_frame_idx + post_event_frames
+        
+        # Check against all active clips
+        for clip_recorder in self.active_clips.values():
+            # Get the frame range of the active clip
+            active_start = clip_recorder.start_frame_idx
+            active_end = clip_recorder.peak_frame_idx + post_event_frames  # Estimated end
+            
+            # Check for overlap: two ranges overlap if one starts before the other ends
+            if not (new_end < active_start or new_start > active_end):
+                return True  # Overlap detected
+        
+        return False
+    
+    def _update_active_clips(self, frame: np.ndarray, frame_idx: int, 
+                            timestamp_sec: float, video_name: str):
+        """Update all active clip recorders and finalize completed ones."""
+        completed_keys = []
+        
+        for occlusion_key, clip_recorder in self.active_clips.items():
+            # Add frame to recorder
+            clip_recorder.add_frame(frame, frame_idx, timestamp_sec, video_name)
+            
+            # Check if recording is complete
+            if clip_recorder.is_complete():
+                # Save the clip
+                self._save_clip(clip_recorder)
+                completed_keys.append(occlusion_key)
+        
+        # Remove completed clips
+        for key in completed_keys:
+            del self.active_clips[key]
+    
+    def _save_clip(self, clip_recorder: 'ActiveClipRecorder'):
+        """Save a completed occlusion clip to disk."""
+        try:
+            # Generate filename
+            timestamp_str = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            track_ids_str = "_".join(str(t) for t in clip_recorder.track_ids)
+            filename = f"occlusion_{timestamp_str}_f{clip_recorder.peak_frame_idx:06d}_tracks_{track_ids_str}.mp4"
+            clip_path = os.path.join(self.clips_dir, filename)
+            
+            # Create video writer
+            fourcc = cv2.VideoWriter_fourcc(*self.config.clip_codec)
+            video_writer = cv2.VideoWriter(clip_path, fourcc, self.video_fps, 
+                                          (self.frame_width, self.frame_height))
+            
+            if not video_writer.isOpened():
+                print(f"✖ Failed to create video writer for {clip_path}")
+                return
+            
+            # Write all frames with annotations
+            for frame, frame_idx, _, _ in clip_recorder.frames:
+                annotated_frame = self._annotate_occlusion_frame(
+                    frame.copy(), 
+                    clip_recorder.involved_detections,
+                    frame_idx == clip_recorder.peak_frame_idx
+                )
+                video_writer.write(annotated_frame)
+            
+            video_writer.release()
+            
+            # Write metadata to CSV
+            self._write_clip_metadata(clip_recorder, clip_path)
+            
+            self.clips_saved += 1
+            duration = clip_recorder.end_timestamp_sec - clip_recorder.start_timestamp_sec
+            print(f"💾 Saved occlusion clip: {filename} ({duration:.1f}s, score: {clip_recorder.peak_proximity_score:.3f})")
+            
+        except Exception as e:
+            print(f"✖ Error saving occlusion clip: {e}")
+    
+    def _annotate_occlusion_frame(self, frame: np.ndarray, 
+                                 detections: List[Tuple[int, Tuple[int, int, int, int]]],
+                                 is_peak: bool) -> np.ndarray:
+        """Annotate a frame with occlusion detection information."""
+        # Colors for different tracks (yellow, cyan, magenta, light green)
+        colors = [(0, 255, 255), (255, 255, 0), (255, 0, 255), (128, 255, 128)]
+        
+        # Draw bounding boxes for involved tracks
+        for i, (track_id, bbox) in enumerate(detections):
+            x1, y1, x2, y2 = bbox
+            color = colors[i % len(colors)]
+            thickness = 4 if is_peak else 2
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, thickness)
+            cv2.putText(frame, f"T{track_id}", (x1, max(15, y1 - 10)), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+        
+        # Add warning label
+        label = "PEAK OCCLUSION" if is_peak else "OCCLUSION EVENT"
+        label_color = (0, 0, 255) if is_peak else (0, 165, 255)
+        cv2.putText(frame, label, (10, 40), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 1.2, label_color, 3)
+        
+        return frame
+    
+    def _write_clip_metadata(self, clip_recorder: 'ActiveClipRecorder', clip_path: str):
+        """Write clip metadata to CSV."""
+        try:
+            with open(self.metadata_csv, "a", newline="", encoding="utf-8") as f:
+                track_ids_str = "_".join(str(t) for t in clip_recorder.track_ids)
+                csv.writer(f).writerow([
+                    datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    self.location, self.date_str, clip_recorder.video_name,
+                    clip_recorder.start_frame_idx, clip_recorder.peak_frame_idx, 
+                    clip_recorder.end_frame_idx,
+                    f"{clip_recorder.start_timestamp_sec:.3f}",
+                    f"{clip_recorder.peak_timestamp_sec:.3f}",
+                    f"{clip_recorder.end_timestamp_sec:.3f}",
+                    track_ids_str, f"{clip_recorder.peak_proximity_score:.4f}",
+                    clip_path, f"Occlusion between {len(clip_recorder.track_ids)} tracks"
+                ])
+        except Exception as e:
+            print(f"✖ Error writing clip metadata: {e}")
     
     def finalize_processing(self):
-        """Finalize processing and save any remaining peak occlusions."""
-        # Save any remaining peak occlusions that might not have been captured
-        # Use very high threshold to avoid saving weak occlusions at video end
-        for occlusion_key, occlusion_data in self.proximity_tracker.active_occlusions.items():
-            if occlusion_data["proximity_score"] > self.proximity_tracker.proximity_threshold * 2.0:  # Very high threshold
-                print(f"🔍 MANUAL REVIEW: Final peak occlusion saved - {occlusion_key} (score: {occlusion_data['proximity_score']:.2f})")
+        """Finalize processing and save any remaining active clips."""
+        print(f"Finalizing manual review collector...")
         
-        # Clear active tracking
-        self.proximity_tracker.active_occlusions.clear()
+        # Save all remaining active clips
+        for occlusion_key, clip_recorder in self.active_clips.items():
+            if len(clip_recorder.frames) > 0:
+                print(f"Saving remaining clip: {occlusion_key}")
+                self._save_clip(clip_recorder)
+        
+        self.active_clips.clear()
+        
+        print(f"✔ Manual review finalized: {self.clips_saved} clips saved, "
+              f"{self.occlusions_detected} occlusions detected, "
+              f"{self.occlusions_skipped} skipped (overlap prevention)")
     
     def get_stats(self) -> Dict[str, Any]:
         """Get statistics about manual review collection."""
         return {
-            "active_tracks": len(self.track_states),
-            "output_directory": self.config.output_dir,
-            "low_conf_csv": self.low_conf_csv,
-            "occlusion_csv": self.occlusion_csv,
-            "tracks_never_confident": sum(1 for state in self.track_states.values() 
-                                        if not state.get("ever_high_confidence", False))
+            "clips_saved": self.clips_saved,
+            "occlusions_detected": self.occlusions_detected,
+            "occlusions_skipped": self.occlusions_skipped,
+            "active_clips": len(self.active_clips),
+            "output_directory": self.clips_dir,
+            "metadata_csv": self.metadata_csv
         }
 
 
-class ProximityTracker:
+class ActiveClipRecorder:
     """
-    Tracks proximity between detections to identify the peak moment of occlusion.
+    Records frames for an active occlusion event.
+    
+    Manages the collection of frames from pre-event buffer through post-event duration,
+    tracking the peak occlusion moment for annotation purposes.
     """
     
-    def __init__(self, proximity_threshold: float = 0.6, center_line_buffer: int = 50):
-        self.proximity_threshold = proximity_threshold
-        self.center_line_buffer = center_line_buffer
+    def __init__(self, occlusion_key: str, occlusion_event: Dict[str, Any],
+                 frame_idx: int, timestamp_sec: float, video_fps: float,
+                 frame_width: int, frame_height: int, config: ManualReviewConfig,
+                 buffered_frames: List[Tuple[np.ndarray, int, float, str]]):
+        self.occlusion_key = occlusion_key
+        self.video_fps = video_fps
+        self.config = config
         
-        # Track ongoing occlusions to find peak moments
-        self.active_occlusions: Dict[str, Dict[str, Any]] = {}
-        self.occlusion_cooldown: Dict[str, int] = {}  # Prevent multiple captures of same occlusion
-        self.cooldown_frames = 120  # 4 seconds at 30fps - longer cooldown to prevent duplicates
+        # Peak information
+        self.peak_frame_idx = frame_idx
+        self.peak_timestamp_sec = timestamp_sec
+        self.peak_proximity_score = occlusion_event["proximity_score"]
+        self.track_ids = [t[0] for t in occlusion_event["tracks"]]
+        self.involved_detections = occlusion_event["tracks"]
+        
+        # Video info
+        self.video_name = buffered_frames[-1][3] if buffered_frames else ""
+        
+        # Frame collection
+        self.frames: List[Tuple[np.ndarray, int, float, str]] = []
+        
+        # Add pre-event frames from buffer
+        pre_event_frames_needed = int(config.clip_pre_event_sec * video_fps)
+        start_idx = max(0, len(buffered_frames) - pre_event_frames_needed)
+        self.frames.extend(buffered_frames[start_idx:])
+        
+        # Recording state
+        self.start_frame_idx = self.frames[0][1] if self.frames else frame_idx
+        self.start_timestamp_sec = self.frames[0][2] if self.frames else timestamp_sec
+        self.post_event_frames_needed = int(config.clip_post_event_sec * video_fps)
+        self.post_event_frames_recorded = 0
+        self.recording_post_event = False
+    
+    def update_peak(self, frame_idx: int, timestamp_sec: float, occlusion_event: Dict[str, Any]):
+        """Update the peak moment if a stronger occlusion is detected."""
+        self.peak_frame_idx = frame_idx
+        self.peak_timestamp_sec = timestamp_sec
+        self.peak_proximity_score = occlusion_event["proximity_score"]
+        self.involved_detections = occlusion_event["tracks"]
+    
+    def add_frame(self, frame: np.ndarray, frame_idx: int, timestamp_sec: float, video_name: str):
+        """Add a frame to the recording."""
+        # Check if we've reached the peak and should start post-event recording
+        if frame_idx > self.peak_frame_idx and not self.recording_post_event:
+            self.recording_post_event = True
+        
+        if self.recording_post_event:
+            self.post_event_frames_recorded += 1
+        
+        self.frames.append((frame.copy(), frame_idx, timestamp_sec, video_name))
+        self.end_frame_idx = frame_idx
+        self.end_timestamp_sec = timestamp_sec
+    
+    def is_complete(self) -> bool:
+        """Check if we've recorded enough post-event frames."""
+        return self.recording_post_event and self.post_event_frames_recorded >= self.post_event_frames_needed
+
+
+class OcclusionDetector:
+    """
+    Detects potential occlusions between fish based on bounding box proximity.
+    
+    An occlusion is detected when multiple fish bounding boxes are close to each other,
+    measured by a combination of Intersection over Union (IoU) and centroid distance.
+    """
+    
+    def __init__(self, proximity_threshold: float = 0.3, 
+                 iou_weight: float = 0.6, distance_weight: float = 0.4):
+        self.proximity_threshold = proximity_threshold
+        self.iou_weight = iou_weight
+        self.distance_weight = distance_weight
+        
+        # Track ongoing occlusions to avoid duplicate clips
+        self.active_occlusions: Dict[str, int] = {}  # occlusion_key -> last_frame_idx
+        self.recorded_pairs: set = set()
+    
+    def detect_occlusions(self, detections: List[Tuple[int, Tuple[int, int, int, int]]], 
+                         center_line: Optional[int], frame_idx: int) -> List[Dict[str, Any]]:
+        """
+        Detect occlusions in the current frame.
+        
+        Args:
+            detections: List of (track_id, bbox) tuples
+            center_line: Position of center line (occlusions near center line are prioritized)
+            frame_idx: Current frame index
+            
+        Returns:
+            List of occlusion events detected in this frame
+        """
+        occlusions = []
+        
+        # Check all pairs of detections
+        for i in range(len(detections)):
+            for j in range(i + 1, len(detections)):
+                track1_id, bbox1 = detections[i]
+                track2_id, bbox2 = detections[j]
+                
+                # Calculate proximity score
+                iou = self._calculate_iou(bbox1, bbox2)
+                distance_score = self._calculate_distance_score(bbox1, bbox2)
+                proximity_score = (self.iou_weight * iou + 
+                                 self.distance_weight * distance_score)
+                
+                # Check if this qualifies as an occlusion
+                if proximity_score > self.proximity_threshold:
+                    occlusion_key = self._get_occlusion_key([track1_id, track2_id])
+                    
+                    # Check if we've already recorded this pair
+                    if occlusion_key in self.recorded_pairs:
+                        continue
+                    
+                    # Calculate center positions for prioritization
+                    center1 = ((bbox1[0] + bbox1[2]) / 2, (bbox1[1] + bbox1[3]) / 2)
+                    center2 = ((bbox2[0] + bbox2[2]) / 2, (bbox2[1] + bbox2[3]) / 2)
+                    
+                    # Check if near center line
+                    near_center_line = False
+                    if center_line is not None:
+                        # Consider "near" as within 100 pixels of center line
+                        buffer = 100
+                        near_center_line = (abs(center1[0] - center_line) < buffer or 
+                                          abs(center2[0] - center_line) < buffer)
+                    
+                    # Record this occlusion
+                    self.active_occlusions[occlusion_key] = frame_idx
+                    self.recorded_pairs.add(occlusion_key)
+                    
+                    occlusions.append({
+                        "occlusion_key": occlusion_key,
+                        "tracks": [(track1_id, bbox1), (track2_id, bbox2)],
+                        "proximity_score": proximity_score,
+                        "iou": iou,
+                        "distance_score": distance_score,
+                        "near_center_line": near_center_line,
+                        "frame_idx": frame_idx
+                    })
+        
+        return occlusions
     
     def _get_occlusion_key(self, track_ids: List[int]) -> str:
         """Generate a consistent key for a pair of tracks."""
         return "_".join(map(str, sorted(track_ids)))
     
-    def _is_in_cooldown(self, occlusion_key: str, current_frame: int) -> bool:
-        """Check if this occlusion pair is in cooldown period."""
-        last_capture = self.occlusion_cooldown.get(occlusion_key, -1000)
-        return current_frame - last_capture < self.cooldown_frames
-    
-    def _set_cooldown(self, occlusion_key: str, current_frame: int):
-        """Set cooldown for this occlusion pair."""
-        self.occlusion_cooldown[occlusion_key] = current_frame
-    
-    def calculate_iou(self, box1: Tuple[int, int, int, int], box2: Tuple[int, int, int, int]) -> float:
+    def _calculate_iou(self, box1: Tuple[int, int, int, int], 
+                       box2: Tuple[int, int, int, int]) -> float:
         """Calculate Intersection over Union between two bounding boxes."""
         x1_1, y1_1, x2_1, y2_1 = box1
         x1_2, y1_2, x2_2, y2_2 = box2
@@ -347,123 +488,30 @@ class ProximityTracker:
         
         return intersection / union if union > 0 else 0.0
     
-    def calculate_distance(self, box1: Tuple[int, int, int, int], box2: Tuple[int, int, int, int]) -> float:
-        """Calculate normalized distance between centers of two bounding boxes."""
+    def _calculate_distance_score(self, box1: Tuple[int, int, int, int], 
+                                  box2: Tuple[int, int, int, int]) -> float:
+        """
+        Calculate normalized distance score between bounding box centers.
+        Returns a score from 0 to 1, where 1 means very close, 0 means far apart.
+        """
         x1_1, y1_1, x2_1, y2_1 = box1
         x1_2, y1_2, x2_2, y2_2 = box2
         
+        # Calculate centers
         center1 = ((x1_1 + x2_1) / 2, (y1_1 + y2_1) / 2)
         center2 = ((x1_2 + x2_2) / 2, (y1_2 + y2_2) / 2)
         
+        # Calculate Euclidean distance
         distance = ((center1[0] - center2[0])**2 + (center1[1] - center2[1])**2)**0.5
         
-        # Normalize by average box size
-        avg_size = ((x2_1 - x1_1) + (y2_1 - y1_1) + (x2_2 - x1_2) + (y2_2 - y1_2)) / 4
-        return distance / max(avg_size, 1)
-    
-    def detect_potential_occlusions(self, detections: List[Tuple[int, Tuple[int, int, int, int]]], 
-                                  center_line: Optional[int] = None, frame_idx: int = 0) -> List[Dict[str, Any]]:
-        """
-        Detect potential occlusions between tracks, but only capture single peak moment
-        and only BEFORE the center line (where fish might merge before counting).
+        # Normalize by average box diagonal (rough measure of fish size)
+        diag1 = ((x2_1 - x1_1)**2 + (y2_1 - y1_1)**2)**0.5
+        diag2 = ((x2_2 - x1_2)**2 + (y2_2 - y1_2)**2)**0.5
+        avg_diag = (diag1 + diag2) / 2
         
-        Args:
-            detections: List of (track_id, bbox) tuples
-            center_line: Position of center line for filtering occlusions
-            frame_idx: Current frame index for tracking occlusion progression
-            
-        Returns:
-            List of occlusion events to save (only peak moments before center line)
-        """
-        occlusions_to_save = []
-        current_occlusions = {}
-        
-        # Check all pairs of detections
-        for i in range(len(detections)):
-            for j in range(i + 1, len(detections)):
-                track1_id, bbox1 = detections[i]
-                track2_id, bbox2 = detections[j]
-                
-                # Calculate centers
-                center1 = ((bbox1[0] + bbox1[2]) / 2, (bbox1[1] + bbox1[3]) / 2)
-                center2 = ((bbox2[0] + bbox2[2]) / 2, (bbox2[1] + bbox2[3]) / 2)
-                
-                # ONLY check occlusions BEFORE the center line
-                if center_line is not None:
-                    # Both fish must be before (left of) the center line
-                    if center1[0] >= center_line or center2[0] >= center_line:
-                        continue  # Skip this pair - not before center line
-                
-                # Calculate proximity metrics
-                iou = self.calculate_iou(bbox1, bbox2)
-                distance = self.calculate_distance(bbox1, bbox2)
-                
-                # Combine metrics for proximity score (more aggressive threshold)
-                proximity_score = iou + (1.0 / (1.0 + distance))
-                
-                # Check if this qualifies as potential occlusion (higher threshold)
-                if proximity_score > self.proximity_threshold:
-                    occlusion_key = self._get_occlusion_key([track1_id, track2_id])
-                    
-                    # Skip if in cooldown period
-                    if self._is_in_cooldown(occlusion_key, frame_idx):
-                        continue
-                    
-                    # Track this occlusion
-                    current_occlusions[occlusion_key] = {
-                        "tracks": [(track1_id, bbox1), (track2_id, bbox2)],
-                        "proximity_score": proximity_score,
-                        "iou": iou,
-                        "distance": distance,
-                        "near_center_line": True,  # All are near center line since we filtered
-                        "frame_idx": frame_idx
-                    }
-        
-        # Update active occlusions and detect peaks - improved peak detection
-        for occlusion_key, current_data in current_occlusions.items():
-            if occlusion_key in self.active_occlusions:
-                # Update existing occlusion
-                prev_data = self.active_occlusions[occlusion_key]
-                
-                # More sophisticated peak detection:
-                # 1. Score must be significantly high
-                # 2. Score must be decreasing by a meaningful amount
-                # 3. Previous score must have been a local maximum
-                score_decrease = prev_data["proximity_score"] - current_data["proximity_score"]
-                is_significant_peak = prev_data["proximity_score"] > self.proximity_threshold * 1.5
-                is_meaningful_decrease = score_decrease > 0.1
-                
-                if is_significant_peak and is_meaningful_decrease:
-                    # This was the peak moment - save it and set long cooldown
-                    occlusions_to_save.append(prev_data)
-                    self._set_cooldown(occlusion_key, frame_idx)
-                    # Remove from active tracking to prevent multiple captures
-                    del self.active_occlusions[occlusion_key]
-                    print(f"📍 Peak occlusion detected for {occlusion_key}: score {prev_data['proximity_score']:.3f} → {current_data['proximity_score']:.3f}")
-                    continue
-                
-                # Update with current data if not a peak
-                self.active_occlusions[occlusion_key] = current_data
-            else:
-                # New occlusion detected
-                self.active_occlusions[occlusion_key] = current_data
-                print(f"🔍 New occlusion started: {occlusion_key} (score: {current_data['proximity_score']:.3f})")
-        
-        # Clean up occlusions that are no longer active (fish separated)
-        active_keys = set(current_occlusions.keys())
-        to_remove = []
-        
-        for occlusion_key in self.active_occlusions:
-            if occlusion_key not in active_keys:
-                # Occlusion ended without being captured - only save if it was significant
-                last_data = self.active_occlusions[occlusion_key]
-                if last_data["proximity_score"] > self.proximity_threshold * 1.8:  # Very high threshold for end-captures
-                    occlusions_to_save.append(last_data)
-                    self._set_cooldown(occlusion_key, frame_idx)
-                    print(f"📍 End-of-occlusion capture for {occlusion_key}: score {last_data['proximity_score']:.3f}")
-                to_remove.append(occlusion_key)
-        
-        for key in to_remove:
-            del self.active_occlusions[key]
-        
-        return occlusions_to_save
+        # Convert to a score (closer = higher score)
+        # Use exponential decay: score = exp(-distance/avg_diag)
+        if avg_diag > 0:
+            normalized_distance = distance / avg_diag
+            return np.exp(-normalized_distance)
+        return 0.0
