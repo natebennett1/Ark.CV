@@ -133,7 +133,7 @@ class FishState:
                 
                 # If it's too soon after the last crossing, likely an oscillation
                 # Use a more aggressive cooldown for opposite directions
-                oscillation_cooldown = max(cooldown_frames, 30)  # At least 1 second at 30fps
+                oscillation_cooldown = max(cooldown_frames, 15)  # At least 0.5 seconds at 30fps
                 
                 if frames_since_last < oscillation_cooldown:
                     print(f"🚫 OSCILLATION DETECTED: Track {self.track_id} tried to cross {direction} "
@@ -145,7 +145,7 @@ class FishState:
                 
                 # If we have too many rapid back-and-forth crossings, be more restrictive
                 if self.consecutive_opposite_crossings >= 2:
-                    extended_cooldown = 60  # 2 seconds at 30fps
+                    extended_cooldown = 30  # 1 second at 30fps
                     if frames_since_last < extended_cooldown:
                         print(f"🚫 EXCESSIVE OSCILLATION: Track {self.track_id} blocked after "
                               f"{self.consecutive_opposite_crossings} rapid reversals")

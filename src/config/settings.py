@@ -31,14 +31,16 @@ class ModelConfig:
 class BotsortConfig:
     """Configuration for BoT-SORT tracker."""
     tracker_type: str = "botsort"
+    track_high_thresh: float = 0.25
+    track_low_thresh: float = 0.1
+    new_track_thresh: float = 0.25
     track_buffer: int = 30
     match_thresh: float = 0.8
-    proximity_thresh: float = 0.5
-    appearance_thresh: float = 0.25
+    fuse_score: bool = True
     gmc_method: str = "sparseOptFlow"
-    new_track_thresh: float = 0.1
-    track_high_thresh: float = 0.1
-    track_low_thresh: float = 0.05
+    proximity_thresh: float = 0.5
+    appearance_thresh: float = 0.8
+    with_reid: bool = False
     max_time_lost: int = 30
 
 

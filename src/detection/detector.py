@@ -5,6 +5,9 @@ This module wraps the Ultralytics YOLO model and provides a clean interface
 for fish detection with multi-object tracking.
 """
 
+import os
+import tempfile
+import yaml
 import torch
 import traceback
 from typing import Optional, Dict, Any, Tuple
@@ -27,28 +30,43 @@ class FishDetector:
         self.botsort_config = botsort_config
         self.model: Optional[YOLO] = None
         self.device = self._determine_device()
-        self._tracker_cfg_dict = self._build_tracker_config()
-        
+        self.tracker_config_file = self._create_tracker_config_file()
+
     def _determine_device(self) -> str:
         """Determine the best available device."""
         if self.model_config.device == "auto":
             return "cuda" if torch.cuda.is_available() else "cpu"
         return self.model_config.device
     
-    def _build_tracker_config(self) -> Dict[str, Any]:
-        """Build tracker configuration dictionary."""
-        return {
+    def _create_tracker_config_file(self) -> str:
+        """Create a YAML configuration file for the tracker."""
+        # Create temporary file
+        fd, temp_file = tempfile.mkstemp(suffix='.yaml', prefix='botsort_config_')
+        
+        # Build config dictionary
+        config = {
             "tracker_type": self.botsort_config.tracker_type,
-            "track_buffer": self.botsort_config.track_buffer,
-            "match_thresh": self.botsort_config.match_thresh,
-            "proximity_thresh": self.botsort_config.proximity_thresh,
-            "appearance_thresh": self.botsort_config.appearance_thresh,
-            "gmc_method": self.botsort_config.gmc_method,
-            "new_track_thresh": self.botsort_config.new_track_thresh,
             "track_high_thresh": self.botsort_config.track_high_thresh,
             "track_low_thresh": self.botsort_config.track_low_thresh,
+            "new_track_thresh": self.botsort_config.new_track_thresh,
+            "track_buffer": self.botsort_config.track_buffer,
+            "match_thresh": self.botsort_config.match_thresh,
+            "fuse_score": self.botsort_config.fuse_score,
+            "gmc_method": self.botsort_config.gmc_method,
+            "proximity_thresh": self.botsort_config.proximity_thresh,
+            "appearance_thresh": self.botsort_config.appearance_thresh,
+            "with_reid": self.botsort_config.with_reid,
             "max_time_lost": self.botsort_config.max_time_lost
         }
+        
+        try:
+            with os.fdopen(fd, 'w') as f:
+                yaml.dump(config, f, default_flow_style=False)
+        except Exception:
+            os.close(fd)
+            raise
+            
+        return temp_file
     
     def _patch_torch_load(self):
         """Apply compatibility patch for torch.load."""
@@ -106,13 +124,22 @@ class FishDetector:
         if self.model is None:
             raise RuntimeError("Model not loaded. Call load_model() first.")
         
-        results = self.model.track(
-            source=frame,
-            persist=True,
-            device=self.device,
-            verbose=False,
-            tracker="botsort.yaml"
-        )[0]
+        try:
+            results = self.model.track(
+                source=frame,
+                persist=True,
+                device=self.device,
+                verbose=False,
+                tracker=self.tracker_config_file
+            )[0]
+        except Exception:
+            results = self.model.track(
+                source=frame,
+                persist=True,
+                device=self.device,
+                verbose=False,
+                tracker="botsort.yaml"
+            )[0]
         
         return results
     
