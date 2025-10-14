@@ -28,7 +28,6 @@
     "min_class_confidence": {
       "BullTrout": 0.80
     },
-    "pixels_per_inch": 25.253,
     "size_thresholds": {
       "Chinook": {"adult": 22, "jack": 12, "mini_jack": 0},
       "Coho": {"adult": 18, "jack": 12},
@@ -38,7 +37,9 @@
     }
   },
   "counting": {
+    "pixels_per_inch": 25.253,
     "center_line_position": 0.50,
+    "upstream_direction": "right_to_left",
     "trail_max_length": 30,
     "stability_window": 3,
     "adipose_window": 3,

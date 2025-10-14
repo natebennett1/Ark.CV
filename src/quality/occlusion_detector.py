@@ -24,7 +24,8 @@ class OcclusionDetector:
     """
     
     def __init__(self, proximity_threshold: float = 0.3, 
-                 iou_weight: float = 0.8, distance_weight: float = 0.2):
+                 iou_weight: float = 0.8, distance_weight: float = 0.2,
+                 upstream_direction: str = "right_to_left"):
         """
         Initialize occlusion detector.
         
@@ -32,10 +33,12 @@ class OcclusionDetector:
             proximity_threshold: Minimum combined score to trigger occlusion
             iou_weight: Weight for IoU in proximity calculation
             distance_weight: Weight for distance in proximity calculation
+            upstream_direction: Direction fish swim upstream ("right_to_left" or "left_to_right")
         """
         self.proximity_threshold = proximity_threshold
         self.iou_weight = iou_weight
         self.distance_weight = distance_weight
+        self.upstream_direction = upstream_direction
         
         # Track individual fish currently involved in active occlusion clips
         # This prevents creating overlapping occlusion events when group composition changes
@@ -76,14 +79,21 @@ class OcclusionDetector:
                 track1_id, bbox1 = detections[i]
                 track2_id, bbox2 = detections[j]
 
-                # Only capture occlusions on or before the center line
+                # Only capture occlusions before fish are counted (on the side they're coming from, before crossing center line)
                 if center_line is not None:
                     center1_x = (bbox1[0] + bbox1[2]) / 2
                     center2_x = (bbox2[0] + bbox2[2]) / 2
                     
-                    # If BOTH fish are past (left of) the center line, skip
-                    if center1_x < center_line and center2_x < center_line:
-                        continue
+                    if self.upstream_direction == "right_to_left":
+                        # Fish swim right-to-left, so only capture occlusions on right or at center
+                        # Skip if BOTH fish are past (left of) the center line
+                        if center1_x < center_line and center2_x < center_line:
+                            continue
+                    else:  # left_to_right
+                        # Fish swim left-to-right, so only capture occlusions on left or at center
+                        # Skip if BOTH fish are past (right of) the center line
+                        if center1_x > center_line and center2_x > center_line:
+                            continue
                 
                 # Calculate proximity score
                 iou = self._calculate_iou(bbox1, bbox2)

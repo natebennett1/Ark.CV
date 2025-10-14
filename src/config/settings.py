@@ -65,6 +65,7 @@ class CountingConfig:
     """Configuration for fish counting and direction detection."""
     pixels_per_inch: float = 25.253
     center_line_position: float = 0.50  # Fraction of frame width
+    upstream_direction: str = "right_to_left"  # "right_to_left" or "left_to_right"
     trail_max_length: int = 30
     stability_window: int = 3  # Frames for majority vote
     adipose_window: int = 3
@@ -179,6 +180,10 @@ class PipelineConfig:
             
         if not 0 <= self.model.confidence_threshold <= 1:
             errors.append("Confidence threshold must be between 0 and 1")
+        
+        # Validate upstream direction
+        if self.counting.upstream_direction not in ["left_to_right", "right_to_left"]:
+            errors.append("Upstream direction must be 'left_to_right' or 'right_to_left'")
         
         if errors:
             raise ValueError("Configuration validation failed:\n" + "\n".join(f"- {e}" for e in errors))
