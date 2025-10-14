@@ -101,8 +101,12 @@ class FishCountingPipeline:
         x1, y1, x2, y2 = bbox
         center_x = (x1 + x2) // 2
         
-        # Choose color based on position relative to center line
-        color = COLOR_LIGHT_BLUE if center_x < center_line else COLOR_YELLOW
+        # Choose color based on position relative to center line and upstream direction
+        # YELLOW = approaching/before count, LIGHT_BLUE = already counted/after crossing
+        if self.config.counting.upstream_direction == "right_to_left":
+            color = COLOR_LIGHT_BLUE if center_x < center_line else COLOR_YELLOW
+        else:
+            color = COLOR_LIGHT_BLUE if center_x > center_line else COLOR_YELLOW
         
         # Draw bounding box
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
@@ -122,9 +126,13 @@ class FishCountingPipeline:
         if len(trail) < 2:
             return
         
-        # Determine color based on current position
+        # Choose color based on position relative to center line and upstream direction
+        # YELLOW = approaching/before count, LIGHT_BLUE = already counted/after crossing
         current_x = trail[-1][0] if trail else 0
-        color = COLOR_LIGHT_BLUE if current_x < center_line else COLOR_YELLOW
+        if self.config.counting.upstream_direction == "right_to_left":
+            color = COLOR_LIGHT_BLUE if current_x < center_line else COLOR_YELLOW
+        else:
+            color = COLOR_LIGHT_BLUE if current_x > center_line else COLOR_YELLOW
         
         # Draw trail lines
         for i in range(1, len(trail)):
@@ -170,7 +178,8 @@ class FishCountingPipeline:
             date_str=self.config.io.date_str,
             video_fps=video_proc.fps,
             frame_width=video_proc.width,
-            frame_height=video_proc.height
+            frame_height=video_proc.height,
+            upstream_direction=self.config.counting.upstream_direction
         )
         
         # Set center line for manual review collector

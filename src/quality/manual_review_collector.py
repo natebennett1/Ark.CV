@@ -38,13 +38,15 @@ class ManualReviewCollector:
     """
     
     def __init__(self, config: ManualReviewConfig, location: str, date_str: str, 
-                 video_fps: float, frame_width: int, frame_height: int):
+                 video_fps: float, frame_width: int, frame_height: int,
+                 upstream_direction: str = "right_to_left"):
         self.config = config
         self.location = location
         self.date_str = date_str
         self.video_fps = video_fps
         self.frame_width = frame_width
         self.frame_height = frame_height
+        self.upstream_direction = upstream_direction
         
         # Ensure output directory exists
         Path(self.config.output_dir).mkdir(parents=True, exist_ok=True)
@@ -63,7 +65,8 @@ class ManualReviewCollector:
         self.occlusion_detector = OcclusionDetector(
             proximity_threshold=self.config.occlusion_proximity_threshold,
             iou_weight=self.config.occlusion_iou_weight,
-            distance_weight=self.config.occlusion_distance_weight
+            distance_weight=self.config.occlusion_distance_weight,
+            upstream_direction=self.upstream_direction
         )
         
         # Active clip recording state

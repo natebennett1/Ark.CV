@@ -26,6 +26,7 @@ class TrackingManager:
         self.state_manager = FishStateManager(counting_config)
         self.center_line: Optional[int] = None
         self.frame_width: Optional[int] = None
+        self.upstream_direction = self.config.upstream_direction
     
     def initialize_frame_info(self, frame_width: int):
         """Initialize frame dimensions and center line position."""
@@ -57,10 +58,17 @@ class TrackingManager:
         direction = None
         
         # Check for crossing: trigger when moving from one side to the other side
-        if fish_state.last_side == "left" and current_side == "right":
-            direction = "Downstream"
-        elif fish_state.last_side == "right" and current_side == "left":
-            direction = "Upstream"
+        # Direction assignment depends on configured upstream direction
+        if self.upstream_direction == "right_to_left":
+            if fish_state.last_side == "left" and current_side == "right":
+                direction = "Downstream"
+            elif fish_state.last_side == "right" and current_side == "left":
+                direction = "Upstream"
+        else:
+            if fish_state.last_side == "left" and current_side == "right":
+                direction = "Upstream"
+            elif fish_state.last_side == "right" and current_side == "left":
+                direction = "Downstream"
         
         # Update the fish's last known side (excluding exact center line position)
         if current_side in ["left", "right"]:
