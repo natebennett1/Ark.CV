@@ -16,83 +16,35 @@ and exports both an annotated video and CSV-based analytics.
   - (`filterpy`, `scikit-image`, `lap`, `scipy`) ensure
   BoT-SORT has the motion and appearance modules it expects.
 
-## Legacy Repository Structure
-
-- `model0903.py` – Main entry point to a single file that loads the YOLO model, performs
-  detection, tracks fish with BoT-SORT, applies seasonal and location-based
-  logic, triggers human-in-the-loop (HITL) exports, and writes per-track
-  measurements.
-
-### Quick Start
-
-1. **Update local paths** in `model0903.py`:
-   - `MODEL_PATH` – Absolute path to your trained YOLO weights (`.pt`).
-   - `VIDEO_PATH` – Absolute path to the input video.
-   - `LOCATION`, `DATE_STR` – Metadata for seasonal logic and reporting.
-
-2. **Run the script**:
-   ```bash
-   python model0903.py
-   ```
-
-3. **Outputs**:
-   - `fish_counts_<timestamp>.csv` – Per-track species counts with direction,
-     confidence, and positional metadata.
-   - `annotated_video_<timestamp>.mp4` – Visualization with bounding boxes,
-     class decisions, and direction overlays (if `SAVE_OUTPUT_VIDEO = True`).
-   - `hitl_queue/` – Crops queued for analyst review when detections are
-     low-confidence or ambiguous.
-
-### BoT-SORT Tracking
-
-The pipeline now uses **BoT-SORT** instead of ByteTrack for multi-object
-tracking. BoT-SORT augments motion cues with appearance embeddings and global
-motion compensation, making it more robust to occlusions, variable lighting, and
-non-linear fish trajectories. Configuration defaults are defined inline in
-`model0903.py`, and the script automatically falls back to Ultralytics'
-`botsort.yaml` if the running Ultralytics build does not accept dictionary-based
-tracker overrides.
-
-If you need to tune the tracker further, adjust the `tracker_cfg` dictionary in
-`model0903.py` or point the fallback to a custom YAML file.
-
-### Human-in-the-Loop Workflow
-
-The `HITLCollector` class buffers low-confidence tracks, exporting cropped frame
-snippets for analyst review. Fine-tune the thresholds via:
-
-- `LOWCONF_THRESHOLD` – Minimum detection confidence to be considered "safe".
-- `HITL_EXPAND_RATIO` – Padding ratio applied to crops.
-- `HITL_TRACK_GAP_FRAMES` – Frames to wait before finalizing a track bundle.
-
-Resulting CSVs (`hitl_manifest.csv`) and crops/images are saved in
-`hitl_queue/<track_id>/` folders.
-
-## New Repository Structure
+## Repository Structure
 ```
 configs/
-└── wells_dam_test.json          # Default pipeline configuration
+├── wells_dam_test.json             # Default pipeline configuration
+└── template.json                   # Example template for overriding configurations
 
 src/
-├── classification/              # Species classification with business rules
-│   ├── species_classifier.py    # Applies seasonal rules and confidence thresholds
-│   └── species_rules.py         # Business logic for species/seasons
-├── config/                      # All configuration management
-│   ├── config_loader.py         # Loads pipeline config from .json file
-│   └── settings.py              # Centralized config with validation
-├── detection/                   # YOLO model management
-│   ├── adipose_detector.py      # Secondary adipose fin detection
-│   └── detector.py              # Main fish detector with tracking
-├── io/                          # Video processing and output management
-│   ├── output_writer.py         # CSV output and statistics
-│   └── video_processor.py       # Video I/O with cloud support
-├── quality/                     # Human-in-the-loop data collection
-│   └── hitl_collector.py        # Low-confidence detection review
-└── tracking/                    # Fish tracking and state management
-    ├── fish_state.py            # Individual fish state tracking
-    └── tracker.py               # Direction detection and crossing logic
+├── classification/                 # Species classification with business rules
+│   ├── species_classifier.py       # Main class that performs species classifications
+│   └── species_rules.py            # Business logic for species/seasons
+├── config/                         # All configuration management
+│   ├── config_loader.py            # Loads pipeline config from .json file
+│   └── settings.py                 # Centralized config with validation
+├── detection/                      # YOLO model management
+│   ├── adipose_detector.py         # Secondary adipose fin detection
+│   └── detector.py                 # Main fish detector with tracking
+├── io/                             # Video processing and output management
+│   ├── output_writer.py            # CSV output and statistics
+│   └── video_processor.py          # Video I/O with cloud support
+├── quality/                        # Human-in-the-loop data collection
+│   ├── clip_recorder.py            # Handles the recording of video clips around QA events
+│   ├── manual_review_collector.py  # Orchestrates capturing of all QA events
+│   ├── occlusion_detector.py       # Performs occlusion detection using graph theory
+│   └── quality_event.py            # QA event data class
+└── tracking/                       # Fish tracking and state management
+    ├── fish_state.py               # Individual fish state tracking
+    └── tracker.py                  # Direction detection and crossing logic
 
-fish_counter.py                  # New pipeline entry point
+fish_counter.py                     # Pipeline entry point and main orchestrator
 ```
 
 ### Quick Start
@@ -143,7 +95,7 @@ fish_counter.py                  # New pipeline entry point
 4. **Outputs** (automatically organized in timestamped folders):
     ```
     output_20251002_143521/
-    ├── hitl_queue/                               # Low-confidence crops for review
+    ├── manual_review/                            # QA clips for human review
     ├── annotated_video_20251002_143521.mp4       # Video with bounding boxes
     ├── fish_counts_20251002_143521.csv           # Detection & classification data
     └── fish_counts_20251002_143521_summary.txt   # Summary

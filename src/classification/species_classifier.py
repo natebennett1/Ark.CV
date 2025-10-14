@@ -106,29 +106,3 @@ class SpeciesClassifier:
         
         # If no category matches, return the smallest category
         return sorted_categories[-1][0] if sorted_categories else None
-    
-    def get_classification_confidence(self, species: str, confidence: float) -> str:
-        """
-        Get a human-readable confidence assessment.
-        
-        Args:
-            species: Classified species
-            confidence: Detection confidence
-            
-        Returns:
-            Confidence assessment string
-        """
-        if species == "Unknown":
-            return "Low confidence"
-        
-        base_species = self.species_rules.extract_base_species(species)
-        min_conf = self._get_minimum_confidence(base_species)
-        
-        if confidence >= 0.9:
-            return "Very high confidence"
-        elif confidence >= 0.8:
-            return "High confidence"
-        elif confidence >= min_conf + 0.1:
-            return "Medium confidence" 
-        else:
-            return "Low confidence"

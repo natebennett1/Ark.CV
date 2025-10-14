@@ -279,21 +279,31 @@ class FishCountingPipeline:
             track_id, bbox, species_final, confidence, frame_number
         )
         
+        # Add current confidence to history for QA tracking
+        fish_state.add_confidence(confidence)
+        
         # Get stable species from temporal voting
         stable_species = fish_state.get_stable_species() or "Unknown"
         
         # Check for counting
         can_count = (direction is not None and 
-                    stable_species != "Unknown" and
+                    #TODO (keep?): stable_species != "Unknown" and
                     self.tracking_manager.can_count_crossing(fish_state, direction, frame_number))
         
         if can_count:
             # Record the count
             self.tracking_manager.record_crossing(fish_state, direction, frame_number)
             
+            
             # Update live counts for display
             live_species_counts[stable_species][direction] += 1
             
+            # Use the maximum confidence from history to catch fish that may have had low confidence
+            # consistently during tracking, not just at the crossing moment
+            max_confidence = fish_state.get_max_confidence()
+            if max_confidence is None:
+                max_confidence = confidence  # Fallback to current confidence
+
             # Write to CSV
             video_timestamp = output.format_video_timestamp(frame_number, fps)
             frame_width, frame_height = video_proc.width, video_proc.height
@@ -305,7 +315,7 @@ class FishCountingPipeline:
                 frame_number=frame_number,
                 track_id=track_id,
                 species=stable_species,
-                confidence=confidence,
+                confidence=max_confidence,
                 direction=direction,
                 x_percent=x_percent,
                 y_percent=y_percent,
@@ -314,6 +324,19 @@ class FishCountingPipeline:
             
             print(f"COUNTED: Track {track_id} ({stable_species}, {fish_state.length_inches:.1f}in) "
                   f"{direction} at {video_timestamp} - Crossing #{fish_state.crossing_count}")
+
+            # 🆕 REPORT CROSSING EVENT FOR QA CLIP COLLECTION
+            # This captures low-confidence, unknown species, and bull trout crossings
+            self.manual_review_collector.report_crossing_event(
+                track_id=track_id,
+                bbox=bbox,
+                frame_idx=frame_number,
+                timestamp_sec=timestamp_sec,
+                video_name=os.path.basename(self.config.io.video_path),
+                species=stable_species,
+                confidence=max_confidence,
+                direction=direction
+            )
         
         # Draw annotations
         self._draw_detection_annotations(

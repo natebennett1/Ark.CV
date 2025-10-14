@@ -77,8 +77,8 @@ class ManualReviewConfig:
     output_dir: str = "./manual_review"
     
     # Video clip settings
-    clip_pre_event_sec: float = 1.5  # Seconds before occlusion peak to include
-    clip_post_event_sec: float = 2.0  # Seconds after occlusion peak to include
+    clip_pre_event_sec: float = 1.0  # Seconds before occlusion peak to include
+    clip_post_event_sec: float = 3.0  # Seconds after occlusion peak to include
     clip_codec: str = "mp4v"  # Video codec for clips (mp4v, avc1, etc.)
     
     # Occlusion detection thresholds

@@ -45,7 +45,7 @@
     "count_cooldown_frames": 0
   },
   "hitl": {
-    "output_dir": "./hitl_queue",
+    "output_dir": "./manual_review",
     "clip_pre_event_sec": 1.5,
     "clip_post_event_sec": 2.0,
     "clip_codec": "mp4v",

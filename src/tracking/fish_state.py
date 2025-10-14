@@ -40,6 +40,9 @@ class FishState:
         # Temporal voting queues
         self.species_votes = deque(maxlen=stability_window)
         self.adipose_votes = deque(maxlen=adipose_window)
+        
+        # Confidence tracking for QA
+        self.confidence_history: deque = deque()
     
     def update_position(self, x: int, y: int):
         """Update the fish's position."""
@@ -55,6 +58,16 @@ class FishState:
         if adipose_status and adipose_status != "Unknown":
             self.adipose_votes.append(adipose_status)
     
+    def add_confidence(self, confidence: float):
+        """Add a confidence value to history."""
+        self.confidence_history.append(confidence)
+    
+    def get_max_confidence(self) -> Optional[float]:
+        """Get max confidence from history."""
+        if not self.confidence_history:
+            return None
+        return max(self.confidence_history)
+
     def get_stable_species(self) -> Optional[str]:
         """Get the most voted species classification."""
         if not self.species_votes:
