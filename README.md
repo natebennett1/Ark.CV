@@ -26,20 +26,25 @@ src/
 ├── classification/                 # Species classification with business rules
 │   ├── species_classifier.py       # Main class that performs species classifications
 │   └── species_rules.py            # Business logic for species/seasons
+│
 ├── config/                         # All configuration management
 │   ├── config_loader.py            # Loads pipeline config from .json file
 │   └── settings.py                 # Centralized config with validation
+│
 ├── detection/                      # YOLO model management
 │   ├── adipose_detector.py         # Secondary adipose fin detection
 │   └── detector.py                 # Main fish detector with tracking
+│
 ├── io/                             # Video processing and output management
 │   ├── output_writer.py            # CSV output and statistics
 │   └── video_processor.py          # Video I/O with cloud support
+│
 ├── quality/                        # Human-in-the-loop data collection
 │   ├── clip_recorder.py            # Handles the recording of video clips around QA events
 │   ├── manual_review_collector.py  # Orchestrates capturing of all QA events
 │   ├── occlusion_detector.py       # Performs occlusion detection using graph theory
 │   └── quality_event.py            # QA event data class
+│
 └── tracking/                       # Fish tracking and state management
     ├── fish_state.py               # Individual fish state tracking
     └── tracker.py                  # Direction detection and crossing logic
