@@ -67,12 +67,9 @@ class FishCountingPipeline:
             input_date
         )
         
-        # Initialize Manual Review collector
-        self.manual_review_collector = ManualReviewCollector(
-            self.config.hitl,
-            self.config.io.location,
-            self.config.io.date_str
-        )
+        # Manual Review collector will be initialized after video is opened
+        # (needs video properties like FPS and dimensions)
+        self.manual_review_collector = None
         
         # Initialize I/O
         self.video_processor = VideoProcessor(self.config.io, self.config.video)
@@ -166,6 +163,16 @@ class FishCountingPipeline:
         # Initialize tracking with video dimensions
         self.tracking_manager.initialize_frame_info(video_proc.width)
         
+        # Initialize Manual Review collector with video properties
+        self.manual_review_collector = ManualReviewCollector(
+            config=self.config.hitl,
+            location=self.config.io.location,
+            date_str=self.config.io.date_str,
+            video_fps=video_proc.fps,
+            frame_width=video_proc.width,
+            frame_height=video_proc.height
+        )
+        
         # Set center line for manual review collector
         center_line = self.tracking_manager.center_line
         self.manual_review_collector.set_center_line_position(center_line)
@@ -192,10 +199,17 @@ class FishCountingPipeline:
             # Extract detections
             boxes, track_ids, confidences, class_ids = self.detector.extract_detections(results)
             
+            # Collect detections for manual review (track_id, bbox pairs)
+            frame_detections = []
+            
             if boxes is not None and track_ids is not None:
                 # Clean up inactive tracks
                 active_track_ids = set(track_ids)
                 self.tracking_manager.cleanup_inactive_tracks(active_track_ids)
+                
+                # Collect detections for occlusion detection
+                for bbox, track_id in zip(boxes, track_ids):
+                    frame_detections.append((int(track_id), tuple(map(int, bbox))))
                 
                 # Process each detection
                 for bbox, track_id, confidence, class_id in zip(boxes, track_ids, confidences, class_ids):
@@ -205,10 +219,12 @@ class FishCountingPipeline:
                         output, center_line, live_species_counts, video_proc
                     )
             
-            # Manual review garbage collection
-            self.manual_review_collector.garbage_collect_inactive(frame_number)
-            # End frame processing for occlusion detection
-            self.manual_review_collector.end_frame_processing(frame, frame_number, timestamp_sec, os.path.basename(self.config.io.video_path))
+            # Process frame for occlusion detection and clip recording
+            self.manual_review_collector.process_frame(
+                frame, frame_number, timestamp_sec, 
+                os.path.basename(self.config.io.video_path),
+                frame_detections
+            )
             
             # Write frame and display
             video_proc.write_frame(frame)
@@ -223,7 +239,6 @@ class FishCountingPipeline:
                 total_fish = sum(sum(counts.values()) for counts in live_species_counts.values())
                 print(f"Frame {frame_number}: {fps:.1f} FPS | Total fish: {total_fish}")
         
-        # Finalize processing
         # Finalize manual review collector to save any remaining peak occlusions
         self.manual_review_collector.finalize_processing()
         output.print_final_summary()
@@ -259,38 +274,36 @@ class FishCountingPipeline:
             if adipose_status in {"Present", "Absent"}:
                 species_final = self.species_classifier.apply_adipose_refinement(species_final, adipose_status)
         
-        # Manual review observation
-        self.manual_review_collector.observe_detection(
-            frame=frame,
-            frame_idx=frame_number,
-            timestamp_sec=timestamp_sec,
-            video_name=os.path.basename(self.config.io.video_path),
-            bbox=bbox,
-            pred_class_name=raw_species,
-            pred_confidence=confidence,
-            track_id=track_id
-        )
-        
         # Update tracking state
         fish_state, direction = self.tracking_manager.process_detection(
             track_id, bbox, species_final, confidence, frame_number
         )
+        
+        # Add current confidence to history for QA tracking
+        fish_state.add_confidence(confidence)
         
         # Get stable species from temporal voting
         stable_species = fish_state.get_stable_species() or "Unknown"
         
         # Check for counting
         can_count = (direction is not None and 
-                    stable_species != "Unknown" and
+                    #TODO (keep?): stable_species != "Unknown" and
                     self.tracking_manager.can_count_crossing(fish_state, direction, frame_number))
         
         if can_count:
             # Record the count
             self.tracking_manager.record_crossing(fish_state, direction, frame_number)
             
+            
             # Update live counts for display
             live_species_counts[stable_species][direction] += 1
             
+            # Use the maximum confidence from history to catch fish that may have had low confidence
+            # consistently during tracking, not just at the crossing moment
+            max_confidence = fish_state.get_max_confidence()
+            if max_confidence is None:
+                max_confidence = confidence  # Fallback to current confidence
+
             # Write to CSV
             video_timestamp = output.format_video_timestamp(frame_number, fps)
             frame_width, frame_height = video_proc.width, video_proc.height
@@ -302,7 +315,7 @@ class FishCountingPipeline:
                 frame_number=frame_number,
                 track_id=track_id,
                 species=stable_species,
-                confidence=confidence,
+                confidence=max_confidence,
                 direction=direction,
                 x_percent=x_percent,
                 y_percent=y_percent,
@@ -311,20 +324,19 @@ class FishCountingPipeline:
             
             print(f"COUNTED: Track {track_id} ({stable_species}, {fish_state.length_inches:.1f}in) "
                   f"{direction} at {video_timestamp} - Crossing #{fish_state.crossing_count}")
-            
-            # Flag for manual review if confidence is low
-            if confidence < self.config.hitl.count_review_threshold:
-                self.manual_review_collector.flag_crossing_event(
-                    frame=frame,
-                    frame_idx=frame_number,
-                    timestamp_sec=timestamp_sec,
-                    video_name=os.path.basename(self.config.io.video_path),
-                    bbox=bbox,
-                    pred_class_name=stable_species,
-                    pred_confidence=confidence,
-                    track_id=track_id,
-                    direction=direction
-                )
+
+            # 🆕 REPORT CROSSING EVENT FOR QA CLIP COLLECTION
+            # This captures low-confidence, unknown species, and bull trout crossings
+            self.manual_review_collector.report_crossing_event(
+                track_id=track_id,
+                bbox=bbox,
+                frame_idx=frame_number,
+                timestamp_sec=timestamp_sec,
+                video_name=os.path.basename(self.config.io.video_path),
+                species=stable_species,
+                confidence=max_confidence,
+                direction=direction
+            )
         
         # Draw annotations
         self._draw_detection_annotations(
