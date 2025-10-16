@@ -96,7 +96,11 @@ class ClipRecorder:
             self.peak_proximity_score = new_event.proximity_score
     
     def add_frame(self, frame: np.ndarray, frame_idx: int, timestamp_sec: float, video_name: str):
-        """Add a frame to the recording."""
+        """
+        Add a frame to the recording.
+        
+        Note: Frame is expected to already be a copy from the caller.
+        """
         # Check if we've reached the peak and should start post-event recording
         if frame_idx > self.peak_frame_idx and not self.recording_post_event:
             self.recording_post_event = True
@@ -104,7 +108,7 @@ class ClipRecorder:
         if self.recording_post_event:
             self.post_event_frames_recorded += 1
         
-        self.frames.append((frame.copy(), frame_idx, timestamp_sec, video_name))
+        self.frames.append((frame, frame_idx, timestamp_sec, video_name))
         self.end_frame_idx = frame_idx
         self.end_timestamp_sec = timestamp_sec
     

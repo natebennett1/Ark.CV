@@ -81,9 +81,13 @@ class FishState:
         if not vote_counts:
             return None
         
+        # Create recency map (most recent = 0, oldest = len-1)
+        recency_map = {vote: i for i, vote in enumerate(reversed(self.species_votes))}
+        
         # Break ties by most recent vote
         best_species = max(vote_counts.items(), 
-                          key=lambda kv: (kv[1], list(self.species_votes)[::-1].index(kv[0])))
+                        key=lambda kv: (kv[1], -recency_map[kv[0]]))
+        
         return best_species[0]
     
     def get_stable_adipose(self) -> Optional[str]:
@@ -98,8 +102,13 @@ class FishState:
         if not vote_counts:
             return None
         
+        # Create recency map (most recent = 0, oldest = len-1)
+        recency_map = {vote: i for i, vote in enumerate(reversed(self.adipose_votes))}
+        
+        # Break ties by most recent vote
         best_adipose = max(vote_counts.items(),
-                          key=lambda kv: (kv[1], list(self.adipose_votes)[::-1].index(kv[0])))
+                          key=lambda kv: (kv[1], -recency_map[kv[0]]))
+        
         return best_adipose[0]
     
     def can_count(self, current_frame: int, cooldown_frames: int = 0) -> bool:
@@ -213,34 +222,6 @@ class FishStateManager:
             self.fish_states.pop(track_id, None)
             self.track_trails.pop(track_id, None)
     
-    def get_all_states(self) -> Dict[int, FishState]:
-        """Get all current fish states."""
-        return self.fish_states.copy()
-    
     def get_state(self, track_id: int) -> Optional[FishState]:
         """Get state for a specific track ID."""
         return self.fish_states.get(track_id)
-
-
-def majority_vote(vote_queue: deque) -> Optional[str]:
-    """
-    Perform majority vote on a queue of votes.
-    
-    Args:
-        vote_queue: Deque containing votes
-        
-    Returns:
-        The winning vote, or None if queue is empty
-    """
-    if not vote_queue:
-        return None
-    
-    # Count votes
-    counts = defaultdict(int)
-    for vote in vote_queue:
-        counts[vote] += 1
-    
-    # Break ties by most recent vote
-    best = max(counts.items(), 
-              key=lambda kv: (kv[1], list(vote_queue)[::-1].index(kv[0])))
-    return best[0]
