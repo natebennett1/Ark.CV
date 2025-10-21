@@ -59,6 +59,8 @@ class ManualReviewCollector:
         
         # Circular frame buffer for pre-event frames
         buffer_size = int(self.config.clip_pre_event_sec * self.video_fps) + 10
+
+        # Store frame references (not copies) until actually needed for a clip
         self.frame_buffer: Deque[Tuple[np.ndarray, int, float, str]] = deque(maxlen=buffer_size)
         
         # Event detectors
@@ -114,9 +116,9 @@ class ManualReviewCollector:
             video_name: Name of the source video
             detections: List of (track_id, bbox) tuples for this frame
         """
-        # Add frame to circular buffer (only when needed)
+        # Add frame reference to circular buffer
         if len(detections) >= 1 or len(self.active_clips) > 0:
-            self.frame_buffer.append((frame.copy(), frame_idx, timestamp_sec, video_name))
+            self.frame_buffer.append((frame, frame_idx, timestamp_sec, video_name))
         
         # Detect occlusions in current frame
         if len(detections) >= 2:
@@ -215,13 +217,18 @@ class ManualReviewCollector:
         print(f"🔍 QA Event detected: {event.event_type.value} - Track {event_key} "
               f"(score: {event.proximity_score:.3f})")
         
+        # Deep copy buffered frames now (only when actually creating a clip)
+        # This avoids copying frames on every single frame processed
+        buffered_frames_copy = [(frame.copy(), fidx, ts, vname) 
+                                for frame, fidx, ts, vname in self.frame_buffer]
+        
         # Create new clip recorder
         clip_recorder = ClipRecorder(
             event=event,
             video_fps=self.video_fps,
             pre_event_sec=self.config.clip_pre_event_sec,
             post_event_sec=self.config.clip_post_event_sec,
-            buffered_frames=list(self.frame_buffer)
+            buffered_frames=buffered_frames_copy
         )
         
         self.active_clips[event_key] = clip_recorder
@@ -257,8 +264,8 @@ class ManualReviewCollector:
         completed_keys = []
         
         for event_key, clip_recorder in self.active_clips.items():
-            # Add frame to recorder
-            clip_recorder.add_frame(frame, frame_idx, timestamp_sec, video_name)
+            # Add frame to recorder (copy it since we're storing it)
+            clip_recorder.add_frame(frame.copy(), frame_idx, timestamp_sec, video_name)
             
             # Check if recording is complete
             if clip_recorder.is_complete():

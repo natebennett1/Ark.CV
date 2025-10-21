@@ -5,7 +5,6 @@ import cv2
 import traceback
 from datetime import datetime
 from typing import Dict, Any
-from collections import defaultdict
 
 # Add src to path for importing modules
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
@@ -189,9 +188,6 @@ class FishCountingPipeline:
         print(f"Starting video processing...")
         print(f"Center line at pixel {center_line}")
         
-        # Track live counts for display (separate from output writer)        
-        live_species_counts = defaultdict(lambda: {"Upstream": 0, "Downstream": 0})
-        
         # Process frames
         for success, frame, frame_number, timestamp_sec in video_proc.read_frames():
             if not success:
@@ -203,7 +199,7 @@ class FishCountingPipeline:
             results = self.detector.detect_and_track(frame)
             
             # Draw frame annotations
-            self._draw_frame_annotations(frame, center_line, live_species_counts)
+            self._draw_frame_annotations(frame, center_line, output.get_species_counts())
             
             # Extract detections
             boxes, track_ids, confidences, class_ids = self.detector.extract_detections(results)
@@ -225,7 +221,7 @@ class FishCountingPipeline:
                     self._process_detection(
                         frame, bbox, track_id, confidence, class_id,
                         frame_number, timestamp_sec, video_proc.fps,
-                        output, center_line, live_species_counts, video_proc
+                        output, center_line, video_proc
                     )
             
             # Process frame for occlusion detection and clip recording
@@ -245,7 +241,8 @@ class FishCountingPipeline:
             if frame_number % 100 == 0:
                 elapsed = time.time() - self.start_time
                 fps = frame_number / elapsed if elapsed > 0 else 0
-                total_fish = sum(sum(counts.values()) for counts in live_species_counts.values())
+                species_counts = output.get_species_counts()
+                total_fish = sum(sum(counts.values()) for counts in species_counts.values())
                 print(f"Frame {frame_number}: {fps:.1f} FPS | Total fish: {total_fish}")
         
         # Finalize manual review collector to save any remaining peak occlusions
@@ -264,7 +261,7 @@ class FishCountingPipeline:
         }
     
     def _process_detection(self, frame, bbox, track_id, confidence, class_id,
-                          frame_number, timestamp_sec, fps, output, center_line, live_species_counts, video_proc: VideoProcessor):
+                          frame_number, timestamp_sec, fps, output, center_line, video_proc: VideoProcessor):
         """Process a single detection through the full pipeline."""
         x1, y1, x2, y2 = bbox
         center_x, center_y = (x1 + x2) // 2, (y1 + y2) // 2
@@ -273,19 +270,19 @@ class FishCountingPipeline:
         raw_species = self.detector.get_class_name(class_id)
         
         # Classify species with business rules
-        species_final, classification_reason = self.species_classifier.classify_detection(raw_species, confidence)
+        classified_species, classification_reason = self.species_classifier.classify_detection(raw_species, confidence)
         
-        # Check for adipose refinement
-        if self.adipose_detector.is_loaded and "_U" in species_final:
-            adipose_status, adipose_conf = self.adipose_detector.infer_adipose_status(
+        # Detect adipose status for this frame (if applicable)
+        current_adipose_status = None
+        if self.adipose_detector.is_loaded and "_U" in classified_species:
+            current_adipose_status, adipose_conf = self.adipose_detector.infer_adipose_status(
                 frame, bbox
             )
-            if adipose_status in {"Present", "Absent"}:
-                species_final = self.species_classifier.apply_adipose_refinement(species_final, adipose_status)
         
-        # Update tracking state
+        # Update tracking state (this adds adipose vote to the queue)
         fish_state, direction = self.tracking_manager.process_detection(
-            track_id, bbox, species_final, confidence, frame_number
+            track_id, bbox, classified_species, confidence, 
+            adipose_status=current_adipose_status
         )
         
         # Add current confidence to history for QA tracking
@@ -293,6 +290,11 @@ class FishCountingPipeline:
         
         # Get stable species from temporal voting
         stable_species = fish_state.get_stable_species() or "Unknown"
+        
+        # Apply adipose refinement using temporal voting (if we have enough votes)
+        stable_adipose = fish_state.get_stable_adipose()
+        if stable_adipose and stable_adipose in {"Present", "Absent"} and "_U" in stable_species:
+            stable_species = self.species_classifier.apply_adipose_refinement(stable_species, stable_adipose)
         
         # Check for counting
         can_count = (direction is not None and 
@@ -302,10 +304,6 @@ class FishCountingPipeline:
         if can_count:
             # Record the count
             self.tracking_manager.record_crossing(fish_state, direction, frame_number)
-            
-            
-            # Update live counts for display
-            live_species_counts[stable_species][direction] += 1
             
             # Use the maximum confidence from history to catch fish that may have had low confidence
             # consistently during tracking, not just at the crossing moment

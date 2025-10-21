@@ -81,7 +81,6 @@ class TrackingManager:
                          bbox: Tuple[int, int, int, int],
                          species: str,
                          confidence: float,
-                         frame_number: int,
                          adipose_status: Optional[str] = None) -> Tuple[FishState, Optional[str]]:
         """
         Process a single detection and update tracking state.
@@ -91,7 +90,6 @@ class TrackingManager:
             bbox: Bounding box as (x1, y1, x2, y2)
             species: Detected species
             confidence: Detection confidence
-            frame_number: Current frame number
             adipose_status: Optional adipose fin status
             
         Returns:
@@ -151,10 +149,6 @@ class TrackingManager:
     def get_trail_points(self, track_id: int) -> list:
         """Get trail points for visualization."""
         return self.state_manager.get_trail(track_id)
-    
-    def get_all_states(self) -> Dict[int, FishState]:
-        """Get all current fish states."""
-        return self.state_manager.get_all_states()
     
     def _calculate_fish_length(self, x1: int, y1: int, x2: int, y2: int) -> float:
         """Calculate fish length from bounding box diagonal."""
