@@ -1,8 +1,8 @@
 """
-Species classification logic that combines detection results with business rules.
+Species classification orchestration with context-aware decision making.
 
-This module handles the complex logic for determining final species classifications
-based on model predictions, confidence thresholds, seasonal rules, and adipose fin detection.
+This module coordinates the classification workflow by combining model outputs,
+confidence thresholds, and business rules to make final species determinations.
 """
 
 from datetime import date
@@ -14,73 +14,103 @@ from .species_rules import SpeciesRules
 
 class SpeciesClassifier:
     """
-    Handles species classification with business rule application.
+    Orchestrates species classification with configuration and context.
     
-    This class combines raw model predictions with domain-specific business rules
-    including seasonal availability, location-based species lists, and confidence thresholds.
+    This class manages the classification workflow by:
+    - Holding location/date context
+    - Applying confidence thresholds from configuration
+    - Coordinating calls to stateless business rules
+    - Making final classification decisions
+    - Providing convenient access to contextual queries
     """
     
     def __init__(self, classification_config: ClassificationConfig, location: str, check_date: date):
+        """
+        Initialize the classifier with context.
+        
+        Args:
+            classification_config: Configuration with thresholds and size rules
+            location: Location name for species validation
+            check_date: Date for seasonal validation
+        """
         self.config = classification_config
         self.location = location
         self.check_date = check_date
-        self.species_rules = SpeciesRules()
     
     def classify_detection(self, raw_species: str, confidence: float) -> Tuple[str, str]:
         """
         Classify a detection into final species category.
         
+        This is the main classification workflow that:
+        1. Normalizes raw model output
+        2. Checks confidence thresholds
+        3. Validates against location/seasonal rules
+        
         Args:
             raw_species: Raw species name from the model
-            confidence: Detection confidence score
+            confidence: Detection confidence score (0.0 to 1.0)
             
         Returns:
             Tuple of (final_species, reasoning) where reasoning explains the classification
         """
         # Step 1: Normalize the raw model output
-        normalized_species = self.species_rules.normalize_legacy_output(raw_species)
-        base_species = self.species_rules.extract_base_species(normalized_species)
+        normalized_species = SpeciesRules.normalize_legacy_output(raw_species)
+        base_species = SpeciesRules.extract_base_species(normalized_species)
         
         # Step 2: Apply confidence thresholds
         min_confidence = self._get_minimum_confidence(base_species)
         if confidence < min_confidence:
             return "Unknown", f"Confidence {confidence:.3f} below threshold {min_confidence:.3f}"
         
-        # Step 3: Check location and seasonal rules
-        final_species = self.species_rules.validate_species_classification(normalized_species, base_species, self.location, self.check_date)
+        # Step 3: Validate species label against location and seasonal rules
+        is_valid, result_species = SpeciesRules.validate_species_label(
+            normalized_species, 
+            self.location, 
+            self.check_date
+        )
         
-        if final_species == "Unknown":
-            return "Unknown", f"Species not allowed at {self.location} on {self.check_date}"
+        if is_valid:
+            return result_species, "Classification successful"
         
-        return final_species, "Classification successful"
-    
-    def apply_adipose_refinement(self, detected_species: str, adipose_status: str) -> str:
-        """
-        Apply adipose fin refinement to a detected species.
-        
-        Args:
-            detected_species: Detected species name
-            adipose_status: Adipose fin status ("Present", "Absent")
-            
-        Returns:
-            Refined species name with adipose suffix
-        """
-        return self.species_rules.apply_adipose_refinement(detected_species, adipose_status)
+        # result_species contains the fallback or "Unknown"
+        if result_species == "Unknown":
+            return "Unknown", f"Species '{base_species}' not allowed at {self.location} on {self.check_date}"
+        else:
+            return result_species, f"Adjusted from '{normalized_species}' to '{result_species}' based on location rules"
     
     def _get_minimum_confidence(self, base_species: str) -> float:
-        """Get the minimum confidence threshold for a base species."""
+        """
+        Get the minimum confidence threshold for a base species.
+        
+        Uses species-specific thresholds from config, falling back to the
+        general unknown_threshold if no specific threshold is defined.
+        
+        Args:
+            base_species: Base species name
+            
+        Returns:
+            Minimum confidence threshold (0.0 to 1.0)
+        """
         return max(
             self.config.unknown_threshold,
             self.config.min_class_confidence.get(base_species, self.config.unknown_threshold)
         )
-    
-    def get_allowed_species(self) -> set:
-        """Get the set of species allowed at the current location."""
-        return self.species_rules.get_allowed_species(self.location)
-    
-    def is_species_in_season(self, species: str) -> bool:
-        """Check if a species is currently in season."""
-        return self.species_rules.is_in_season(species, self.location, self.check_date)
+
+    def apply_adipose_refinement(self, detected_species: str, adipose_status: str) -> str:
+        """
+        Apply adipose fin refinement to a detected species.
+        
+        This adds or updates the adipose fin suffix for salmonids.
+        Non-salmonids are returned unchanged.
+        
+        Args:
+            detected_species: Detected species name
+            adipose_status: Adipose fin status ("Present", "Absent", or other)
+            
+        Returns:
+            Species name with appropriate adipose suffix
+        """
+        return SpeciesRules.apply_adipose_suffix(detected_species, adipose_status)
     
     def classify_by_size(self, base_species: str, length_inches: float) -> Optional[str]:
         """
