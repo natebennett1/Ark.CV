@@ -221,3 +221,27 @@ stabilize predictions across frames.
 For questions or assistance, please document the environment, Ultralytics
 version, GPU availability, and attach sample frames exhibiting the issue. This
 context helps triage tracking or classification anomalies quickly.
+
+## Keeping local experiments off `main`
+
+If you would like to keep the cascade-training utilities (or any other
+experiments) separate from your production `main` branch, work on a feature
+branch and push that branch to GitHub instead of merging immediately. A typical
+flow looks like this:
+
+```powershell
+# Make sure your local main matches GitHub
+git checkout main
+git pull origin main
+
+# Create and switch to a dedicated branch for the training workflow
+git checkout -b feature/local-cascade-training
+
+# Do your work, commit as needed, then publish the branch
+git push -u origin feature/local-cascade-training
+```
+
+As long as you keep working on `feature/local-cascade-training`, nothing touches
+`main`. When you are ready to review the changes, open a pull request targeting
+`main` (or another branch of your choosing). You can continue iterating on the
+feature branch without merging until you are satisfied.
