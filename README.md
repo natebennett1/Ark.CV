@@ -13,6 +13,7 @@ and exports both an annotated video and CSV-based analytics.
   - `ultralytics==8.2.0`
   - `opencv-python`
   - `torch`, `torchvision`,`torchaudio`
+  - `Pillow` (image loading/augmentation for crop training)
   - (`filterpy`, `scikit-image`, `lap`, `scipy`) ensure
   BoT-SORT has the motion and appearance modules it expects.
 
@@ -140,8 +141,107 @@ fish_counter.py                     # Pipeline entry point and main orchestrator
      two-stage head where a specialized classifier refines species-specific
      cues.
 
+## Image-only cascade training workflow
+
+The steps below focus solely on preparing datasets and training models from an
+image export. They do **not** require running the video-counting pipeline.
+Point the commands at the Roboflow dataset folder on your workstation (e.g.
+`C:\Users\20ben\Downloads\Enhanced Wells Dam.v7i.coco-mmdetection`).
+
+### 1. Prepare fish-only detection labels and crop metadata
+
+`dataset_tools/prepare_datasets.py` converts your `[species]_[adipose]` labels into
+a single-class COCO detector dataset and multi-task crop metadata. Point it at
+the Roboflow export root and it will automatically pick up the `train/`,
+`valid/`, and `test/` splits without touching the original images.
+
+```powershell
+python -m dataset_tools.prepare_datasets `
+  --dataset-root "C:\Users\20ben\Downloads\Enhanced Wells Dam.v7i.coco-mmdetection" `
+  --output-dir "C:\Users\20ben\Documents\ark_cv_cascade" `
+  --pad-ratio 0.15 `
+  --min-crop-size 8
+```
+
+Outputs of interest:
+
+- `anns_det_fish_only_{train,val,test}.json` – single-class COCO annotations.
+- `crops/` – padded crops per detection split (default 15% context padding).
+- `crops_meta_{split}.csv` – CSV metadata for the multi-task crop trainer.
+
+### 2. Train the RT-DETR fish detector in MMDetection
+
+Copy `configs/rtdetr_r50_fish.py` into your MMDetection workspace and point the
+dataset entries at the files produced above (use absolute paths on Windows). The config sets
+`short-side` resizing (960–1280px), light photometric augmentations, and a
+single-class head.
+
+```powershell
+python tools/train.py configs/rtdetr_r50_fish.py `
+  --cfg-options `
+    train_dataloader.dataset.data_root="C:/Users/20ben/Documents/ark_cv_cascade/" `
+    val_dataloader.dataset.data_root="C:/Users/20ben/Documents/ark_cv_cascade/" `
+    test_dataloader.dataset.data_root="C:/Users/20ben/Documents/ark_cv_cascade/" `
+    train_dataloader.dataset.ann_file="C:/Users/20ben/Documents/ark_cv_cascade/anns_det_fish_only_train.json" `
+    val_dataloader.dataset.ann_file="C:/Users/20ben/Documents/ark_cv_cascade/anns_det_fish_only_val.json" `
+    test_dataloader.dataset.ann_file="C:/Users/20ben/Documents/ark_cv_cascade/anns_det_fish_only_val.json"
+```
+
+Adjust batch size/learning schedule per your GPU. When training completes, copy
+the best checkpoint path into your pipeline configuration as the primary
+detector.
+
+### 3. Train the multi-task crop classifier
+
+Use `dataset_tools/train_classifier.py` to train an EfficientNet-based classifier
+with shared backbone and species/adipose heads. The script consumes the crop
+metadata CSVs generated in step 1 and reads crops from the output directory you
+supplied earlier.
+
+```powershell
+python -m dataset_tools.train_classifier `
+  --train-csv "C:\Users\20ben\Documents\ark_cv_cascade\crops_meta_train.csv" `
+  --val-csv "C:\Users\20ben\Documents\ark_cv_cascade\crops_meta_val.csv" `
+  --root-dir "C:\Users\20ben\Documents\ark_cv_cascade" `
+  --output-dir "C:\Users\20ben\Documents\ark_cv_classifier" `
+  --model efficientnet_b2 `
+  --image-size 256 `
+  --epochs 45 `
+  --adipose-weight 0.6
+```
+
+The training loop applies horizontal flips, ±5° rotations, color jitter, random
+gamma, mild blur, and cutout to build robustness. After training, thresholds of
+≈0.3 (species) and 0.45 (adipose) for the softmax maxima work well as
+“unknown” triggers. Export the averaged logits per track in your runtime to
+stabilize predictions across frames.
+
 ## Support
 
 For questions or assistance, please document the environment, Ultralytics
 version, GPU availability, and attach sample frames exhibiting the issue. This
 context helps triage tracking or classification anomalies quickly.
+
+## Keeping local experiments off `main`
+
+If you would like to keep the cascade-training utilities (or any other
+experiments) separate from your production `main` branch, work on a feature
+branch and push that branch to GitHub instead of merging immediately. A typical
+flow looks like this:
+
+```powershell
+# Make sure your local main matches GitHub
+git checkout main
+git pull origin main
+
+# Create and switch to a dedicated branch for the training workflow
+git checkout -b feature/local-cascade-training
+
+# Do your work, commit as needed, then publish the branch
+git push -u origin feature/local-cascade-training
+```
+
+As long as you keep working on `feature/local-cascade-training`, nothing touches
+`main`. When you are ready to review the changes, open a pull request targeting
+`main` (or another branch of your choosing). You can continue iterating on the
+feature branch without merging until you are satisfied.
