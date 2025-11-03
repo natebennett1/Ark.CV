@@ -7,7 +7,7 @@ from pathlib import Path
 
 import torch
 
-from src.training import (
+from dataset_tools import (
     TrainingConfig,
     load_crop_metadata,
     train_multitask_classifier,

@@ -150,13 +150,13 @@ Point the commands at the Roboflow dataset folder on your workstation (e.g.
 
 ### 1. Prepare fish-only detection labels and crop metadata
 
-`parse_labels_and_make_crops.py` converts your `[species]_[adipose]` labels into
+`dataset_tools/prepare_datasets.py` converts your `[species]_[adipose]` labels into
 a single-class COCO detector dataset and multi-task crop metadata. Point it at
 the Roboflow export root and it will automatically pick up the `train/`,
 `valid/`, and `test/` splits without touching the original images.
 
 ```powershell
-python parse_labels_and_make_crops.py `
+python -m dataset_tools.prepare_datasets `
   --dataset-root "C:\Users\20ben\Downloads\Enhanced Wells Dam.v7i.coco-mmdetection" `
   --output-dir "C:\Users\20ben\Documents\ark_cv_cascade" `
   --pad-ratio 0.15 `
@@ -193,13 +193,13 @@ detector.
 
 ### 3. Train the multi-task crop classifier
 
-Use `train_multitask_classifier.py` to train an EfficientNet-based classifier
+Use `dataset_tools/train_classifier.py` to train an EfficientNet-based classifier
 with shared backbone and species/adipose heads. The script consumes the crop
 metadata CSVs generated in step 1 and reads crops from the output directory you
 supplied earlier.
 
 ```powershell
-python train_multitask_classifier.py `
+python -m dataset_tools.train_classifier `
   --train-csv "C:\Users\20ben\Documents\ark_cv_cascade\crops_meta_train.csv" `
   --val-csv "C:\Users\20ben\Documents\ark_cv_cascade\crops_meta_val.csv" `
   --root-dir "C:\Users\20ben\Documents\ark_cv_cascade" `

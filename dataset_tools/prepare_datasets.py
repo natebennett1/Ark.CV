@@ -5,7 +5,7 @@ import argparse
 import logging
 from pathlib import Path
 
-from src.training import FishCascadePrepConfig, SplitSpec, prepare_fish_only_detection_and_crops
+from dataset_tools import FishCascadePrepConfig, SplitSpec, prepare_fish_only_detection_and_crops
 
 
 def parse_args() -> argparse.Namespace:
