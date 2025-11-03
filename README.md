@@ -13,6 +13,7 @@ and exports both an annotated video and CSV-based analytics.
   - `ultralytics==8.2.0`
   - `opencv-python`
   - `torch`, `torchvision`,`torchaudio`
+  - `Pillow` (image loading/augmentation for crop training)
   - (`filterpy`, `scikit-image`, `lap`, `scipy`) ensure
   BoT-SORT has the motion and appearance modules it expects.
 
@@ -139,6 +140,81 @@ fish_counter.py                     # Pipeline entry point and main orchestrator
      fin features that influence adipose classification, or incorporate a
      two-stage head where a specialized classifier refines species-specific
      cues.
+
+## Image-only cascade training workflow
+
+The steps below focus solely on preparing datasets and training models from an
+image export. They do **not** require running the video-counting pipeline.
+Point the commands at the Roboflow dataset folder on your workstation (e.g.
+`C:\Users\20ben\Downloads\Enhanced Wells Dam.v7i.coco-mmdetection`).
+
+### 1. Prepare fish-only detection labels and crop metadata
+
+`parse_labels_and_make_crops.py` converts your `[species]_[adipose]` labels into
+a single-class COCO detector dataset and multi-task crop metadata. Point it at
+the Roboflow export root and it will automatically pick up the `train/`,
+`valid/`, and `test/` splits without touching the original images.
+
+```powershell
+python parse_labels_and_make_crops.py `
+  --dataset-root "C:\Users\20ben\Downloads\Enhanced Wells Dam.v7i.coco-mmdetection" `
+  --output-dir "C:\Users\20ben\Documents\ark_cv_cascade" `
+  --pad-ratio 0.15 `
+  --min-crop-size 8
+```
+
+Outputs of interest:
+
+- `anns_det_fish_only_{train,val,test}.json` – single-class COCO annotations.
+- `crops/` – padded crops per detection split (default 15% context padding).
+- `crops_meta_{split}.csv` – CSV metadata for the multi-task crop trainer.
+
+### 2. Train the RT-DETR fish detector in MMDetection
+
+Copy `configs/rtdetr_r50_fish.py` into your MMDetection workspace and point the
+dataset entries at the files produced above (use absolute paths on Windows). The config sets
+`short-side` resizing (960–1280px), light photometric augmentations, and a
+single-class head.
+
+```powershell
+python tools/train.py configs/rtdetr_r50_fish.py `
+  --cfg-options `
+    train_dataloader.dataset.data_root="C:/Users/20ben/Documents/ark_cv_cascade/" `
+    val_dataloader.dataset.data_root="C:/Users/20ben/Documents/ark_cv_cascade/" `
+    test_dataloader.dataset.data_root="C:/Users/20ben/Documents/ark_cv_cascade/" `
+    train_dataloader.dataset.ann_file="C:/Users/20ben/Documents/ark_cv_cascade/anns_det_fish_only_train.json" `
+    val_dataloader.dataset.ann_file="C:/Users/20ben/Documents/ark_cv_cascade/anns_det_fish_only_val.json" `
+    test_dataloader.dataset.ann_file="C:/Users/20ben/Documents/ark_cv_cascade/anns_det_fish_only_val.json"
+```
+
+Adjust batch size/learning schedule per your GPU. When training completes, copy
+the best checkpoint path into your pipeline configuration as the primary
+detector.
+
+### 3. Train the multi-task crop classifier
+
+Use `train_multitask_classifier.py` to train an EfficientNet-based classifier
+with shared backbone and species/adipose heads. The script consumes the crop
+metadata CSVs generated in step 1 and reads crops from the output directory you
+supplied earlier.
+
+```powershell
+python train_multitask_classifier.py `
+  --train-csv "C:\Users\20ben\Documents\ark_cv_cascade\crops_meta_train.csv" `
+  --val-csv "C:\Users\20ben\Documents\ark_cv_cascade\crops_meta_val.csv" `
+  --root-dir "C:\Users\20ben\Documents\ark_cv_cascade" `
+  --output-dir "C:\Users\20ben\Documents\ark_cv_classifier" `
+  --model efficientnet_b2 `
+  --image-size 256 `
+  --epochs 45 `
+  --adipose-weight 0.6
+```
+
+The training loop applies horizontal flips, ±5° rotations, color jitter, random
+gamma, mild blur, and cutout to build robustness. After training, thresholds of
+≈0.3 (species) and 0.45 (adipose) for the softmax maxima work well as
+“unknown” triggers. Export the averaged logits per track in your runtime to
+stabilize predictions across frames.
 
 ## Support
 
