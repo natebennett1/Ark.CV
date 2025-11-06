@@ -31,7 +31,7 @@ const clipQueueSeed = [
     capturedAt: '2024-03-29T09:42:00-07:00',
     location: 'Station 12B',
     reviewType: 'species',
-    speciesGuess: 'Chinook AA',
+    speciesGuess: 'Chinook Salmon',
     adiposeFlag: 'Clipped',
     countGuess: 1,
     clipUrl:
@@ -47,7 +47,7 @@ const clipQueueSeed = [
     capturedAt: '2024-03-29T10:15:00-07:00',
     location: 'Station 09A',
     reviewType: 'occlusion',
-    speciesGuess: 'Steelhead AP',
+    speciesGuess: 'Steelhead Trout',
     adiposeFlag: 'Present',
     countGuess: 2,
     clipUrl:
@@ -64,7 +64,7 @@ const clipQueueSeed = [
     capturedAt: '2024-03-29T11:02:00-07:00',
     location: 'Station 07D',
     reviewType: 'species',
-    speciesGuess: 'Sockeye AP',
+    speciesGuess: 'Sockeye Salmon',
     adiposeFlag: 'Present',
     countGuess: 1,
     clipUrl:
@@ -80,7 +80,7 @@ const clipQueueSeed = [
     capturedAt: '2024-03-29T08:15:00-07:00',
     location: 'East Ladder 02',
     reviewType: 'species',
-    speciesGuess: 'Coho AA',
+    speciesGuess: 'Coho Salmon',
     adiposeFlag: 'Clipped',
     countGuess: 1,
     clipUrl:
@@ -96,7 +96,7 @@ const clipQueueSeed = [
     capturedAt: '2024-03-29T07:58:00-07:00',
     location: 'Channel West 01',
     reviewType: 'occlusion',
-    speciesGuess: 'Sockeye AP',
+    speciesGuess: 'Sockeye Salmon',
     adiposeFlag: 'Present',
     countGuess: 3,
     clipUrl:
@@ -122,16 +122,11 @@ const resetClipQueue = () => {
 };
 
 const speciesOptions = [
-  'Bull Trout',
-  'Chinook AA',
-  'Chinook AP',
-  'Coho AA',
-  'Coho AP',
-  'Lamprey',
-  'Sockeye AA',
-  'Sockeye AP',
-  'Steelhead AA',
-  'Steelhead AP',
+  'Chinook Salmon',
+  'Steelhead Trout',
+  'Sockeye Salmon',
+  'Coho Salmon',
+  'Rainbow Trout',
 ];
 
 const state = {
