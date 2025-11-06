@@ -111,9 +111,6 @@ class IOConfig:
     date_str: str = ""  # YYYY-MM-DD format
     
     # Cloud storage (for future AWS deployment)
-    s3_input_bucket: Optional[str] = None
-    s3_output_bucket: Optional[str] = None
-    s3_input_key: Optional[str] = None
     use_cloud_storage: bool = False
 
 
@@ -223,12 +220,5 @@ def load_config_from_env() -> PipelineConfig:
         config.io.location = location
     if date_str := os.getenv('FISH_DATE'):
         config.io.date_str = date_str
-    
-    # Cloud configuration
-    if s3_input := os.getenv('FISH_S3_INPUT_BUCKET'):
-        config.io.s3_input_bucket = s3_input
-        config.io.use_cloud_storage = True
-    if s3_output := os.getenv('FISH_S3_OUTPUT_BUCKET'):
-        config.io.s3_output_bucket = s3_output
     
     return config

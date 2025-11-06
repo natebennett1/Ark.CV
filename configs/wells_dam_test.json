@@ -8,9 +8,6 @@
     "video_output_path": "",
     "location": "Wells Dam",
     "date_str": "2025-08-31",
-    "s3_input_bucket": null,
-    "s3_output_bucket": null,
-    "s3_input_key": null,
     "use_cloud_storage": false
   }
 }
