@@ -64,7 +64,6 @@
     "csv_output_path": "",
     "video_output_path": "",
     "location": "Dam Location",
-    "date_str": "2000-01-01",
-    "use_cloud_storage": false
+    "date_str": "2000-01-01"
   }
 }

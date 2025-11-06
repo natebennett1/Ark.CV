@@ -109,9 +109,6 @@ class IOConfig:
     # Metadata
     location: str = ""
     date_str: str = ""  # YYYY-MM-DD format
-    
-    # Cloud storage (for future AWS deployment)
-    use_cloud_storage: bool = False
 
 
 @dataclass 
@@ -161,7 +158,7 @@ class PipelineConfig:
             
         if not self.io.video_path:
             errors.append("Video path is required")
-        elif not self.io.use_cloud_storage and not os.path.isfile(self.io.video_path):
+        elif not os.path.isfile(self.io.video_path):
             errors.append(f"Video file not found: {self.io.video_path}")
         
         # Validate date format

@@ -7,7 +7,6 @@
     "csv_output_path": "",
     "video_output_path": "",
     "location": "Wells Dam",
-    "date_str": "2025-08-31",
-    "use_cloud_storage": false
+    "date_str": "2025-08-31"
   }
 }
