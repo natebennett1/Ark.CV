@@ -193,29 +193,3 @@ class PipelineConfig:
             'video': self.video.__dict__,
             'io': self.io.__dict__
         }
-
-
-def create_default_config() -> PipelineConfig:
-    """Create a default configuration with sensible defaults."""
-    return PipelineConfig()
-
-
-def load_config_from_env() -> PipelineConfig:
-    """Load configuration from environment variables."""
-    config = create_default_config()
-    
-    # Model configuration
-    if model_path := os.getenv('FISH_MODEL_PATH'):
-        config.model.model_path = model_path
-    if adipose_path := os.getenv('FISH_ADIPOSE_MODEL_PATH'):
-        config.model.adipose_model_path = adipose_path
-    
-    # I/O configuration
-    if video_path := os.getenv('FISH_VIDEO_PATH'):
-        config.io.video_path = video_path
-    if location := os.getenv('FISH_LOCATION'):
-        config.io.location = location
-    if date_str := os.getenv('FISH_DATE'):
-        config.io.date_str = date_str
-    
-    return config
