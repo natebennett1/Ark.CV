@@ -3,86 +3,180 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Ark.CV Fish Detection Dashboard</title>
+  <title>Ark.CV HITL Console</title>
   <link rel="stylesheet" href="styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+    rel="stylesheet"
+  />
+  <script
+    src="https://cdn.auth0.com/js/auth0-spa-js/2.5/auth0-spa-js.production.js"
+    defer
+  ></script>
+  <script src="app.js" type="module" defer></script>
 </head>
 <body>
-  <header class="top-bar">
-    <h1>Ark.CV Fish Detection Dashboard</h1>
-    <nav class="top-nav">
-      <a href="#overview" class="nav-link">Overview</a>
-      <a href="#review" class="nav-link">Review Detections</a>
-    </nav>
-  </header>
-
-  <main>
-    <section id="overview" class="card-grid">
-      <article class="stat-card">
-        <h2>Year-To-Date</h2>
-        <p class="stat-value" id="ytd-count">0</p>
-        <p class="stat-label">Fish counted</p>
-      </article>
-      <article class="stat-card">
-        <h2>Month-To-Date</h2>
-        <p class="stat-value" id="mtd-count">0</p>
-        <p class="stat-label">Fish counted</p>
-      </article>
-      <article class="stat-card">
-        <h2>Week-To-Date</h2>
-        <p class="stat-value" id="wtd-count">0</p>
-        <p class="stat-label">Fish counted</p>
-      </article>
-    </section>
-
-    <section id="trend" class="card">
-      <header class="card-header">
-        <h2>Daily Detection Trend (Last 7 Days)</h2>
-      </header>
-      <div class="trend-chart" id="trend-chart"></div>
-    </section>
-
-    <section id="review" class="card">
-      <header class="card-header">
-        <h2>Low Confidence Detections</h2>
-        <p>Review and resolve detections below the configured confidence threshold.</p>
-      </header>
-      <div class="review-grid" id="review-container">
-        <!-- Cards injected by JavaScript -->
+  <div id="auth-screen" class="auth-screen">
+    <div class="auth-card">
+      <div class="auth-card__header">
+        <img src="https://static.thenounproject.com/png/2343814-200.png" alt="Ark.CV logo" />
+        <h1>Sign in to Ark.CV HITL</h1>
+        <p>Use your Auth0 credentials to continue reviewing detections for your dam.</p>
       </div>
-    </section>
-  </main>
+      <div class="auth-card__actions">
+        <button id="auth-login" class="primary-button">Sign in with Auth0</button>
+        <button id="auth-demo" class="ghost-button">Explore demo account</button>
+      </div>
+      <p class="auth-card__help">
+        Configure <code>authConfig</code> in <code>ui/app.js</code> with your Auth0 tenant settings.
+      </p>
+      <p id="auth-error" class="auth-error" hidden></p>
+    </div>
+  </div>
 
-  <template id="review-card-template">
-    <article class="review-card">
-      <img class="review-image" alt="Fish detection" loading="lazy" />
-      <div class="review-body">
-        <h3 class="species-name"></h3>
-        <dl class="metadata">
+  <div id="app-shell" class="app-shell hidden">
+    <header class="top-bar">
+      <div class="brand">
+        <h1>Ark.CV Human-in-the-Loop Console</h1>
+        <span id="dam-pill" class="dam-pill"></span>
+      </div>
+      <div class="header-controls">
+        <nav class="top-nav">
+          <a href="#overview">Overview</a>
+          <a href="#review">Review queue</a>
+          <a href="#admin">Admin</a>
+        </nav>
+        <div class="search-wrapper">
+          <input
+            id="global-search"
+            type="search"
+            placeholder="Search clips by ID, species, reviewer..."
+            aria-label="Search clips"
+          />
+          <div id="search-results" class="search-results hidden" role="status"></div>
+        </div>
+        <div class="user-badge">
           <div>
-            <dt>Confidence</dt>
-            <dd class="confidence"></dd>
+            <span id="user-name" class="user-name"></span>
+            <span id="user-role" class="user-role"></span>
           </div>
-          <div>
-            <dt>Detected</dt>
-            <dd class="timestamp"></dd>
-          </div>
-          <div>
-            <dt>Location</dt>
-            <dd class="location"></dd>
-          </div>
-        </dl>
-        <div class="action-group">
-          <button class="action-button accept">Accept Species</button>
-          <button class="action-button change">Change Species</button>
+          <button id="logout-button" class="ghost-button small">Log out</button>
         </div>
       </div>
-    </article>
-  </template>
+    </header>
 
-  <footer class="footer">
-    <p>Ark.CV Demo Interface &bull; Built for model review workflows</p>
-  </footer>
+    <main>
+      <section id="overview" class="metrics-grid">
+        <article class="metric-card">
+          <header>
+            <h2>Total fish counted</h2>
+            <span class="metric-subtitle">Real-time updates as clips are confirmed</span>
+          </header>
+          <p id="metric-total" class="metric-value">0</p>
+        </article>
+        <article class="metric-card">
+          <header>
+            <h2>Pending reviews</h2>
+            <span class="metric-subtitle">FIFO queue for manual validation</span>
+          </header>
+          <p id="metric-pending" class="metric-value">0</p>
+        </article>
+        <article class="metric-card">
+          <header>
+            <h2>Manual confirmations</h2>
+            <span class="metric-subtitle">Counts verified or corrected by operators</span>
+          </header>
+          <p id="metric-manual" class="metric-value">0</p>
+        </article>
+        <article class="metric-card">
+          <header>
+            <h2>Last sync</h2>
+            <span class="metric-subtitle">HITL corrections streaming to admin dashboard</span>
+          </header>
+          <p id="metric-sync" class="metric-value">--</p>
+        </article>
+      </section>
 
-  <script src="app.js" defer></script>
+      <section id="review" class="card">
+        <header class="card-header">
+          <div>
+            <h2>HITL Review Queue</h2>
+            <p>Clips are retained for 30 days. Download or export records you want to keep longer.</p>
+          </div>
+          <button id="download-reviewed" class="ghost-button">Download reviewed clips (CSV)</button>
+        </header>
+
+        <div class="filter-bar">
+          <fieldset class="filter-group">
+            <legend>Sort order</legend>
+            <button type="button" data-sort="fifo" class="filter-chip active">Oldest → Newest</button>
+            <button type="button" data-sort="lifo" class="filter-chip">Newest → Oldest</button>
+          </fieldset>
+          <fieldset class="filter-group">
+            <legend>Review type</legend>
+            <button type="button" data-type="all" class="filter-chip active">All</button>
+            <button type="button" data-type="occlusion" class="filter-chip">Occlusion</button>
+            <button type="button" data-type="species" class="filter-chip">Species ID</button>
+          </fieldset>
+          <div class="filter-group filter-dates">
+            <label>
+              Start date
+              <input type="date" id="filter-start" />
+            </label>
+            <label>
+              End date
+              <input type="date" id="filter-end" />
+            </label>
+            <label>
+              Location
+              <select id="filter-location">
+                <option value="">All</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div class="carousel">
+          <button class="carousel-nav" id="queue-prev" aria-label="Previous clip">⟵</button>
+          <div class="carousel-stage" id="clip-stage" aria-live="polite"></div>
+          <button class="carousel-nav" id="queue-next" aria-label="Next clip">⟶</button>
+        </div>
+        <div id="queue-indicator" class="queue-indicator"></div>
+      </section>
+
+      <section id="admin" class="card admin-card">
+        <header class="card-header">
+          <div>
+            <h2>Admin dashboard</h2>
+            <p>Monitor per-dam totals and recent manual edits. Updates stream instantly from HITL actions.</p>
+          </div>
+        </header>
+        <div class="admin-grid">
+          <div class="admin-panel">
+            <h3>Per-dam totals</h3>
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>Dam</th>
+                  <th>Total fish</th>
+                  <th>Manual updates</th>
+                  <th>Pending clips</th>
+                </tr>
+              </thead>
+              <tbody id="dam-table"></tbody>
+            </table>
+          </div>
+          <div class="admin-panel">
+            <h3>Change log</h3>
+            <ul id="change-log" class="change-log"></ul>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="assertive" hidden></div>
 </body>
 </html>
