@@ -150,6 +150,18 @@ const init = () => {
   renderStats();
   renderTrend();
   renderDetections();
+  const updateActiveNav = () => {
+    const current = window.location.hash || '#overview';
+    document.querySelectorAll('.nav-link').forEach((a) => {
+      if (a.getAttribute('href') === current) {
+        a.classList.add('active');
+      } else {
+        a.classList.remove('active');
+      }
+    });
+  };
+  updateActiveNav();
+  window.addEventListener('hashchange', updateActiveNav);
 };
 
 document.addEventListener('DOMContentLoaded', init);
