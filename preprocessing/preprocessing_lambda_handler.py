@@ -31,7 +31,4 @@ def lambda_handler(event, context):
         logger.info("Queued for preprocessing: s3://%s/%s", bucket, key)
         logger.info("Message ID: %s", response['MessageId'])
 
-    return {
-        'statusCode': 200,
-        'body': json.dumps('Video queued for preprocessing')
-    }
+    return

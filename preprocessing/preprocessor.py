@@ -9,8 +9,21 @@ import json
 import cv2
 import boto3
 import subprocess
+import logging
+import shutil
 from typing import List, Dict, Tuple
 from dataclasses import dataclass
+
+if logging.getLogger().hasHandlers():
+    # The Lambda environment pre-configures a handler logging to stderr. If a handler is already configured,
+    # `.basicConfig` does not execute. Thus we set the level directly.
+    logging.getLogger().setLevel(logging.INFO)
+else:
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+logger = logging.getLogger()
 
 @dataclass
 class VideoSegment:
@@ -59,24 +72,22 @@ class VideoPreprocessor:
             detectShadows=False
         )
         
+        # Area filter: self.min_area - self.max_area pixels²"
         self.min_area = 500
         self.max_area = 50000
-
-        print("Initialized background subtractor for motion detection")
-        print(f"  Area filter: {self.min_area} - {self.max_area} pixels²")
 
     def download_video_from_s3(self, bucket: str, key: str, local_path: str) -> bool:
         """Download video from S3 to local storage."""
         try:
-            print(f"Downloading s3://{bucket}/{key} to {local_path}...")
+            logger.info("Downloading s3://%s/%s to %s...", bucket, key, local_path)
             self.s3_client.download_file(bucket, key, local_path)
             
             file_size_gb = os.path.getsize(local_path) / (1024**3)
-            print(f"✓ Downloaded {file_size_gb:.2f} GB")
+            logger.info("Downloaded %.2f GB", file_size_gb)
             return True
             
         except Exception as e:
-            print(f"✗ Failed to download video: {e}")
+            logger.error("Failed to download video: %s", e)
             return False
     
     def detect_fish_segments(self, video_path: str) -> List[VideoSegment]:
@@ -88,29 +99,28 @@ class VideoPreprocessor:
         """
         if not os.path.exists(video_path):
             raise FileNotFoundError(f"Video not found: {video_path}")
-        
-        print(f"\nScanning video for fish presence...")
-        print(f"Sample interval: every {self.sample_interval} frames")
-        
+
+        logger.info("Scanning video for fish presence. Sample interval: every %d frames", self.sample_interval)
+
         cap = cv2.VideoCapture(video_path)
         fps = cap.get(cv2.CAP_PROP_FPS)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         duration_sec = total_frames / fps if fps > 0 else 0
-        
-        print(f"Video: {duration_sec/3600:.1f} hours ({total_frames:,} frames @ {fps:.1f} fps)")
+
+        logger.info("Video: %.1f hours (%d frames @ %.1f fps)", duration_sec/3600, total_frames, fps)
 
         # Learning period - let background subtractor see sediment
-        print("Learning background model (processing first 500 frames)...")
+        logger.info("Learning background model (processing first 500 frames)...")
         for i in range(min(500, total_frames)):
             ret, frame = cap.read()
             if not ret:
                 break
             resized = cv2.resize(frame, (640, 480))
-            self.bg_subtractor.apply(resized, learningRate=0.01)  # Slow learning
+            self.bg_subtractor.apply(resized, learningRate=0.01)
 
         # Reset to start for actual detection
         cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-        print("Background model learned. Starting detection...")
+        logger.info("Background model learned. Starting detection...")
 
         # Track detections with list of (timestamp_sec, detection_count)
         detection_timestamps = []
@@ -160,15 +170,15 @@ class VideoPreprocessor:
                 # Progress update
                 if frames_checked % 100 == 0:
                     progress = (frame_idx / total_frames) * 100
-                    print(f"Progress: {progress:.1f}% | Detections: {total_detections}")
+                    logger.info("Progress: %.1f%% | Detections: %d", progress, total_detections)
             
             frame_idx += 1
         
         cap.release()
-        
-        print(f"✓ Scan complete: {total_detections} moving objects detected across {len(detection_timestamps)} sampled frames")
-        print(f"  Frames checked: {frames_checked:,} / {total_frames:,} ({frames_checked/total_frames*100:.1f}%)")
-        
+
+        logger.info("Scan complete: %d moving objects detected across %d sampled frames", total_detections, len(detection_timestamps))
+        logger.info("Frames checked: %d / %d (%.1f%%)", frames_checked, total_frames, frames_checked/total_frames*100)
+
         # Convert detection timestamps into segments with buffers
         segments = self._create_segments_from_detections(detection_timestamps, duration_sec)
         
@@ -188,7 +198,7 @@ class VideoPreprocessor:
             List of merged VideoSegment objects
         """
         if not detection_timestamps:
-            print("No fish detected in video")
+            logger.info("No fish detected in video")
             return []
         
         # Sort by timestamp
@@ -233,19 +243,13 @@ class VideoPreprocessor:
         if merged_segments:
             merged_segments[-1].end_sec = min(merged_segments[-1].end_sec, video_duration_sec)
 
-        # Print segment summary
-        print(f"\nSegment Summary:")
-        print(f"  Raw segments: {len(raw_segments)}")
-        print(f"  Merged segments: {len(merged_segments)}")
+        logger.info("Segment Summary: raw=%d, merged=%d", len(raw_segments), len(merged_segments))
         
         total_duration = sum(seg.duration_sec for seg in merged_segments)
         reduction_pct = 100 * (1 - total_duration / video_duration_sec)
         
-        print(f"  Total processing duration: {total_duration/3600:.2f} hours ({reduction_pct:.1f}% reduction)")
-        print(f"\n  Segments:")
-        for i, seg in enumerate(merged_segments):
-            print(f"    [{i}] {seg.start_sec/60:.1f}m - {seg.end_sec/60:.1f}m "
-                  f"(duration: {seg.duration_sec/60:.1f}m, detections: {seg.detection_count})")
+        logger.info("Total processing duration: %.2f hours (%.1f%% reduction)", 
+            total_duration/3600, reduction_pct)
         
         return merged_segments
     
@@ -268,7 +272,6 @@ class VideoPreprocessor:
                 # Merge: extend current segment to include next
                 current.end_sec = next_seg.end_sec
                 current.detection_count += next_seg.detection_count
-                print(f"  Merging segments (gap: {gap:.0f}s)")
             else:
                 # Gap too large, finalize current and start new
                 merged.append(current)
@@ -297,16 +300,16 @@ class VideoPreprocessor:
         for i, seg in enumerate(segments):
             clip_filename = f"{video_name}_clip_{i:03d}.mp4"
             clip_path = os.path.join(output_dir, clip_filename)
-            
-            print(f"\nExtracting clip {i+1}/{len(segments)}: {clip_filename}")
-            print(f"  Time range: {seg.start_sec:.1f}s - {seg.end_sec:.1f}s ({seg.duration_sec:.1f}s)")
-            
-            # Use ffmpeg for fast, lossless extraction
+
+            logger.info("Extracting clip %d/%d: %s (%.1fs - %.1fs, %.1fs duration)", 
+                       i+1, len(segments), clip_filename, seg.start_sec, seg.end_sec, seg.duration_sec)
+
+            # Use ffmpeg for fast extraction
             success = self._extract_clip_ffmpeg(source_video, seg.start_sec, seg.duration_sec, clip_path)
             
             if success:
                 clip_size_mb = os.path.getsize(clip_path) / (1024**2)
-                print(f"  ✓ Created: {clip_size_mb:.1f} MB")
+                logger.info("Created: %.1f MB", clip_size_mb)
                 
                 clip_metadata.append({
                     'clip_filename': clip_filename,
@@ -318,7 +321,7 @@ class VideoPreprocessor:
                     'clip_index': i
                 })
             else:
-                print(f"  ✗ Failed to extract clip {i}")
+                logger.error("Failed to extract clip %d", i)
         
         return clip_metadata
     
@@ -350,7 +353,7 @@ class VideoPreprocessor:
             return result.returncode == 0
             
         except Exception as e:
-            print(f"ffmpeg error: {e}")
+            logger.error("ffmpeg error: %s", e)
             return False
     
     def upload_clips_to_s3(self, 
@@ -363,26 +366,26 @@ class VideoPreprocessor:
         Returns:
             Updated clip metadata with S3 keys
         """
-        print(f"\nUploading {len(clips)} clips to s3://{bucket}/{s3_prefix}/")
+        logger.info("Uploading %d clips to s3://%s/%s/", len(clips), bucket, s3_prefix)
         
         for clip in clips:
             local_path = clip['clip_path']
             s3_key = f"{s3_prefix}/{clip['clip_filename']}"
             
-            print(f"  Uploading {clip['clip_filename']}...")
+            logger.info("Uploading %s...", clip['clip_filename'])
             
             try:
                 self.s3_client.upload_file(local_path, bucket, s3_key)
                 clip['s3_key'] = s3_key
                 clip['s3_bucket'] = bucket
-                print(f"    ✓ s3://{bucket}/{s3_key}")
+                logger.info("Successfully uploaded to s3://%s/%s", bucket, s3_key)
                 
                 # Clean up local file to save space
                 os.remove(local_path)
                 
             except Exception as e:
-                print(f"    ✗ Upload failed: {e}")
-        
+                logger.error("Upload failed: %s", e)
+
         return clips
     
     def send_clips_to_processing_queue(self, 
@@ -394,15 +397,17 @@ class VideoPreprocessor:
                                   time_str: str):
         """Send SQS messages for each clip to trigger full processing."""
         sqs_client = boto3.client('sqs')
-        
-        print(f"\nSending {len(clips)} messages to processing queue...")
-        
+
+        logger.info("Sending %d messages to processing queue...", len(clips))
+
         for clip in clips:
             message = {
                 'video_s3_bucket': clip['s3_bucket'],
                 'video_s3_key': clip['s3_key'],
                 'location': location,
-                'date_str': date_str
+                'ladder': ladder,
+                'date_str': date_str,
+                'time_str': time_str
             }
             
             try:
@@ -410,10 +415,10 @@ class VideoPreprocessor:
                     QueueUrl=queue_url,
                     MessageBody=json.dumps(message)
                 )
-                print(f"  ✓ Sent clip {clip['clip_index']}: {response['MessageId'][:8]}...")
+                logger.info("Sent clip %d: %s...", clip['clip_index'], response['MessageId'][:8])
                 
             except Exception as e:
-                print(f"  ✗ Failed to send message for clip {clip['clip_index']}: {e}")
+                logger.error("Failed to send message for clip %d: %s", clip['clip_index'], e)
 
 
 def parse_filename(filename: str) -> Tuple[str, str, str, str]:
@@ -429,10 +434,10 @@ def parse_filename(filename: str) -> Tuple[str, str, str, str]:
     parts = basename.split('-')
     
     if len(parts) >= 4:
-        location = parts[0].title()  # wells -> Wells
-        ladder = parts[1].title()    # east -> East
-        date_raw = parts[2]          # 20251025
-        time_str = parts[3]          # 0800
+        location = parts[0]
+        ladder = parts[1]
+        date_raw = parts[2]
+        time_str = parts[3]
         
         # Convert date format: 20251025 -> 2025-10-25
         date_str = f"{date_raw[:4]}-{date_raw[4:6]}-{date_raw[6:8]}"
@@ -447,63 +452,29 @@ def parse_filename(filename: str) -> Tuple[str, str, str, str]:
 
 def main():
     """Main preprocessing job entry point - reads from SQS queue."""
-    print("Fish Video Preprocessing Job")
-    print("=" * 50)
+    logger.info("Begin Fish Video Preprocessing Job")
+
+    sqs_message = os.getenv('SQS_MESSAGE')
+    processing_queue_url = os.getenv('PROCESSING_QUEUE_URL')
+
+    if not sqs_message or not processing_queue_url:
+        logger.error("Missing required environment variables. Exiting.")
+        return 1
+
+    body = json.loads(sqs_message)
     
-    # Read message from SQS queue (set by ECS task environment)
-    # TODO: Uncomment
-    # preprocessing_queue_url = os.getenv('PREPROCESSING_QUEUE_URL')
-    # processing_queue_url = os.getenv('PROCESSING_QUEUE_URL')
-    
-    # if not preprocessing_queue_url or not processing_queue_url:
-    #     print("Missing required environment variables. Exiting.")
-    #     return 1
-    # TODO: End Uncomment
-    
-    # Receive message from preprocessing queue
-    # TODO: Uncomment
-    # sqs_client = boto3.client('sqs')
-    
-    # print(f"Polling preprocessing queue: {preprocessing_queue_url}")
-    # response = sqs_client.receive_message(
-    #     QueueUrl=preprocessing_queue_url,
-    #     MaxNumberOfMessages=1,
-    #     WaitTimeSeconds=10  # Long polling
-    # )
-    
-    # if 'Messages' not in response:
-    #     print("No messages in queue")
-    #     return 0
-    
-    # message = response['Messages'][0]
-    # receipt_handle = message['ReceiptHandle']
-    # body = json.loads(message['Body'])
-    
-    # video_s3_bucket = body['video_s3_bucket']
-    # video_s3_key = body['video_s3_key']
-    
-    # print(f"Processing: s3://{video_s3_bucket}/{video_s3_key}")
-    # TODO: End Uncomment
-    
+    video_s3_bucket = body['video_s3_bucket']
+    video_s3_key = body['video_s3_key']
+
+    logger.info("Processing: s3://%s/%s", video_s3_bucket, video_s3_key)
+
     # Parse video metadata from filename
     try:
-        # TODO: Switch back
-        # video_filename = os.path.basename(video_s3_key)
-        video_filename = "wells-east-20251025-0800.mp4"
+        video_filename = os.path.basename(video_s3_key)
         location, ladder, date_str, time_str = parse_filename(video_filename)
-        print(f"Location: {location}")
-        print(f"Ladder: {ladder}")
-        print(f"Date: {date_str}")
-        print(f"Time: {time_str}")
+        logger.info("Location: %s, Ladder: %s, Date: %s, Time: %s", location, ladder, date_str, time_str)
     except ValueError as e:
-        print(f"Error: {e}")
-        # Delete message from queue (invalid format)
-        # TODO: Uncomment
-        # sqs_client.delete_message(
-        #     QueueUrl=preprocessing_queue_url,
-        #     ReceiptHandle=receipt_handle
-        # )
-        # TODO: End Uncomment
+        logger.error("Invalid filename format: %s", e)
         return 1
     
     try:
@@ -511,77 +482,89 @@ def main():
         preprocessor = VideoPreprocessor()
         
         # Download video
-        # TODO: Uncomment
-        # video_local_path = '/tmp/input_video.mp4'
-        # if not preprocessor.download_video_from_s3(video_s3_bucket, video_s3_key, video_local_path):
-        #     return 1
-        video_local_path = 'C:\\Users\\alexqian\\OneDrive - Microsoft\\Documents\\! MY DOCUMENTS !\\ArkInputs\\Sparse-Test-Video.mp4'
-        # TODO: End Uncomment
+        video_local_path = '/tmp/input_video.mp4'
+        if not preprocessor.download_video_from_s3(video_s3_bucket, video_s3_key, video_local_path):
+            return 1
         
         # Detect fish segments
         segments = preprocessor.detect_fish_segments(video_local_path)
         
         if not segments:
-            print("\nNo fish detected in video - no processing needed")
-            # Delete message and exit successfully
-            # TODO: Uncomment
-            # sqs_client.delete_message(
-            #     QueueUrl=preprocessing_queue_url,
-            #     ReceiptHandle=receipt_handle
-            # )
-            # TODO: End Uncomment
+            logger.info("No fish detected in video - no processing needed")
             return 0
         
         # Extract clips
-        # TODO: Switch back
-        # output_dir = '/tmp/clips'
-        output_dir = 'C:\\Users\\alexqian\\OneDrive - Microsoft\\Documents\\! MY DOCUMENTS !\\ArkInputs\\tmp'
+        output_dir = '/tmp/clips'
         video_name = video_filename.replace('.mp4', '')
         clips = preprocessor.extract_video_clips(video_local_path, segments, output_dir, video_name)
         
         if not clips:
-            print("No clips extracted. Exiting.")
+            logger.error("No clips extracted. Exiting.")
             return 1
         
         # Upload clips to S3 (same bucket, different prefix)
-        # TODO: Uncomment
-        # s3_prefix = f"processed_clips/{video_name}"
-        # clips = preprocessor.upload_clips_to_s3(clips, video_s3_bucket, s3_prefix)
+        s3_prefix = f"trimmed-clips/{video_name}"
+        clips = preprocessor.upload_clips_to_s3(clips, video_s3_bucket, s3_prefix)
         
         # Send to processing queue
-        # preprocessor.send_clips_to_processing_queue(
-        #     clips=clips,
-        #     queue_url=processing_queue_url,
-        #     location=location,
-        #     ladder=ladder,
-        #     date_str=date_str,
-        #     time_str=time_str
-        # )
-        # TODO: End Uncomment
+        preprocessor.send_clips_to_processing_queue(
+            clips=clips,
+            queue_url=processing_queue_url,
+            location=location,
+            ladder=ladder,
+            date_str=date_str,
+            time_str=time_str
+        )
 
-        print("\nPreprocessing complete!")
-        # TODO: Uncomment
-        # print(f"   Original video: {video_s3_key}")
-        # TODO: End Uncomment
-        print(f"   Clips created: {len(clips)}")
-        print(f"   Ready for GPU processing")
-        
-        # Delete message from queue (success)
-        # TODO: Uncomment
-        # sqs_client.delete_message(
-        #     QueueUrl=preprocessing_queue_url,
-        #     ReceiptHandle=receipt_handle
-        # )
-        # TODO: End Uncomment
-        
+        logger.info("Preprocessing complete! %d clips created from %s, ready for GPU processing.", len(clips), video_s3_key)
+
         return 0
-        
     except Exception as e:
-        print(f"\nPreprocessing failed: {e}")
-        import traceback
-        traceback.print_exc()
-        # Don't delete message - it will be retried or go to DLQ
+        logger.exception("Preprocessing failed: %s", e)
         return 1
+    finally:
+        # Clean up local files
+        if os.path.exists(video_local_path):
+            os.remove(video_local_path)
+        if os.path.exists(output_dir):
+            shutil.rmtree(output_dir)
+
+
+# This version of main() is for local testing only
+# def main():
+#     """Main preprocessing job entry point - uses local files."""
+#     logger.info("Begin Fish Video Preprocessing Job")
+    
+#     video_filename = "wells-east-20251025-0800.mp4"
+#     location, ladder, date_str, time_str = parse_filename(video_filename)
+#     logger.info("Location: %s, Ladder: %s, Date: %s, Time: %s", location, ladder, date_str, time_str)
+
+#     try:
+#         preprocessor = VideoPreprocessor()
+        
+#         video_local_path = 'C:\\Users\\alexqian\\OneDrive - Microsoft\\Documents\\! MY DOCUMENTS !\\ArkInputs\\Sparse-Test-Video.mp4'
+        
+#         segments = preprocessor.detect_fish_segments(video_local_path)
+        
+#         if not segments:
+#             logger.info("No fish detected in video - no processing needed")
+#             return 0
+        
+#         output_dir = 'C:\\Users\\alexqian\\OneDrive - Microsoft\\Documents\\! MY DOCUMENTS !\\ArkInputs\\tmp'
+#         video_name = video_filename.replace('.mp4', '')
+#         clips = preprocessor.extract_video_clips(video_local_path, segments, output_dir, video_name)
+        
+#         if not clips:
+#             logger.error("No clips extracted. Exiting.")
+#             return 1
+        
+#         logger.info("Preprocessing complete! %d clips created, ready for GPU processing.", len(clips))
+        
+#         return 0
+        
+#     except Exception as e:
+#         logger.exception("Preprocessing failed: %s", e)
+#         return 1
 
 
 if __name__ == "__main__":
