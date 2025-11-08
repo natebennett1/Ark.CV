@@ -1,9 +1,9 @@
 {
   "model": {
-    "model_path": "C:\\Users\\alexqian\\OneDrive - Microsoft\\Documents\\! MY DOCUMENTS !\\ArkInputs\\weights93.pt"
+    "model_path": "C:\\Users\\20ben\\Downloads\\weights93.pt"
   },
   "io": {
-    "video_path": "C:\\Users\\alexqian\\OneDrive - Microsoft\\Documents\\! MY DOCUMENTS !\\ArkInputs\\Test-Video-Shortened-4-sec.mp4",
+    "video_path": "C:\\Users\\20ben\\Downloads\\20240711_800_100.mp4",
     "location": "Wells Dam",
     "ladder": "east",
     "date_str": "2025-08-31",
