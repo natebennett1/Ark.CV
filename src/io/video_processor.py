@@ -43,12 +43,9 @@ class VideoProcessor:
         if not self.io_config.video_path:
             raise ValueError("Video path not configured")
         
-        # For cloud deployment, we might download the video first
-        video_path = self._resolve_video_path()
-        
-        self.cap = cv2.VideoCapture(video_path)
+        self.cap = cv2.VideoCapture(self.io_config.video_path)
         if not self.cap.isOpened():
-            print(f"✖ Could not open video: {video_path}")
+            print(f"✖ Could not open video: {self.io_config.video_path}")
             return False
         
         # Get video properties
@@ -59,20 +56,6 @@ class VideoProcessor:
         
         print(f"Video info: {self.width}x{self.height} @ {self.fps:.1f}fps, {self.total_frames} frames")
         return True
-    
-    def _resolve_video_path(self) -> str:
-        """
-        Resolve video path, downloading from cloud if necessary.
-        
-        For future cloud deployment, this method would handle downloading
-        the video from S3 to a local temporary file.
-        """
-        if self.io_config.use_cloud_storage:
-            # TODO: Implement S3 download logic for cloud deployment
-            # For now, assume local path
-            pass
-        
-        return self.io_config.video_path
     
     def setup_output_video(self) -> bool:
         """
@@ -88,26 +71,16 @@ class VideoProcessor:
             print("✖ Cannot setup output video: input video not opened")
             return False
         
-        output_path = self._resolve_output_path()
         fourcc = cv2.VideoWriter_fourcc(*self.video_config.output_video_codec)
         
-        self.video_writer = cv2.VideoWriter(output_path, fourcc, self.fps, (self.width, self.height))
+        self.video_writer = cv2.VideoWriter(self.io_config.video_output_path, fourcc, self.fps, (self.width, self.height))
         
         if not self.video_writer.isOpened():
-            print(f"✖ Failed to create output video: {output_path}")
+            print(f"✖ Failed to create output video: {self.io_config.video_output_path}")
             return False
         
-        print(f"✔ Will save annotated video to: {output_path}")
+        print(f"✔ Will save annotated video to: {self.io_config.video_output_path}")
         return True
-    
-    def _resolve_output_path(self) -> str:
-        """
-        Resolve output video path, handling cloud storage if configured.
-        
-        For cloud deployment, this might return a local temp path that
-        gets uploaded to S3 after processing.
-        """
-        return self.io_config.video_output_path
     
     def read_frames(self) -> Generator[Tuple[bool, Optional[np.ndarray], int, float], None, None]:
         """

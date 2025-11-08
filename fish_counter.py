@@ -261,7 +261,8 @@ class FishCountingPipeline:
         }
     
     def _process_detection(self, frame, bbox, track_id, confidence, class_id,
-                          frame_number, timestamp_sec, fps, output, center_line, video_proc: VideoProcessor):
+                          frame_number, timestamp_sec, fps, output: OutputWriter, 
+                          center_line, video_proc: VideoProcessor):
         """Process a single detection through the full pipeline."""
         x1, y1, x2, y2 = bbox
         center_x, center_y = (x1 + x2) // 2, (y1 + y2) // 2
@@ -371,7 +372,7 @@ def main(config_file: str = None):
     if not config_file or not os.path.exists(config_file):
         print(f"❌ Configuration file not found: {config_file or 'None provided'}")
         print("\nUsage: python fish_counter.py <config_file>")
-        print("\nExample: python fish_counter.py configs/wells_dam_test.json")
+        print("\nExample: python fish_counter.py configs/local.json")
         print("\nAvailable config files:")
         if os.path.exists("configs"):
             for file in os.listdir("configs"):
@@ -410,7 +411,7 @@ if __name__ == "__main__":
     else:
         # Look for a default config file
         default_configs = [
-            "configs/wells_dam_test.json"
+            "configs/local.json"
         ]
         
         for default_config in default_configs:
