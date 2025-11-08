@@ -261,7 +261,8 @@ class FishCountingPipeline:
         }
     
     def _process_detection(self, frame, bbox, track_id, confidence, class_id,
-                          frame_number, timestamp_sec, fps, output, center_line, video_proc: VideoProcessor):
+                          frame_number, timestamp_sec, fps, output: OutputWriter, 
+                          center_line, video_proc: VideoProcessor):
         """Process a single detection through the full pipeline."""
         x1, y1, x2, y2 = bbox
         center_x, center_y = (x1 + x2) // 2, (y1 + y2) // 2
