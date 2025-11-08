@@ -14,7 +14,7 @@ from src.detection import FishDetector, AdiposeDetector
 from src.tracking import TrackingManager
 from src.classification import SpeciesClassifier
 from src.quality import ManualReviewCollector
-from src.io import VideoProcessor, OutputWriter
+from src.io import VideoProcessor, OutputHandler, LocalOutputHandler
 
 # Open CV uses BGR, not RGB
 COLOR_RED = (0, 0, 255)
@@ -39,7 +39,7 @@ class FishCountingPipeline:
         self.species_classifier = None
         self.manual_review_collector = None
         self.video_processor = None
-        self.output_writer = None
+        self.output_handler = None
         
         # Processing statistics
         self.start_time = None
@@ -72,7 +72,7 @@ class FishCountingPipeline:
         
         # Initialize I/O
         self.video_processor = VideoProcessor(self.config.io, self.config.video)
-        self.output_writer = OutputWriter(self.config.io)
+        self.output_handler = LocalOutputHandler(self.config.io)
         
         print("✔ All components initialized")
     
@@ -155,7 +155,7 @@ class FishCountingPipeline:
             self.adipose_detector.load_model()
             
             # Use context managers for proper resource cleanup
-            with self.video_processor as video_proc, self.output_writer as output:
+            with self.video_processor as video_proc, self.output_handler as output:
                 return self._process_video(video_proc, output)
                 
         except Exception as e:
@@ -165,7 +165,7 @@ class FishCountingPipeline:
         finally:
             self._cleanup()
     
-    def _process_video(self, video_proc: VideoProcessor, output: OutputWriter) -> Dict[str, Any]:
+    def _process_video(self, video_proc: VideoProcessor, output: OutputHandler) -> Dict[str, Any]:
         """Process the video frame by frame."""
         # Initialize tracking with video dimensions
         self.tracking_manager.initialize_frame_info(video_proc.width)
@@ -236,32 +236,22 @@ class FishCountingPipeline:
             if not video_proc.display_frame(frame):
                 print("User requested quit.")
                 break
-            
-            # Progress reporting
-            if frame_number % 100 == 0:
-                elapsed = time.time() - self.start_time
-                fps = frame_number / elapsed if elapsed > 0 else 0
-                species_counts = output.get_species_counts()
-                total_fish = sum(sum(counts.values()) for counts in species_counts.values())
-                print(f"Frame {frame_number}: {fps:.1f} FPS | Total fish: {total_fish}")
         
         # Finalize manual review collector to save any remaining peak occlusions
         self.manual_review_collector.finalize_processing()
-        output.print_final_summary()
+
+        # Write final fish counts
+        output.write_final_counts()
         
         # Return results
         elapsed_total = time.time() - self.start_time
         return {
             "frames_processed": self.frames_processed,
-            "processing_time": elapsed_total,
-            "fps": self.frames_processed / elapsed_total if elapsed_total > 0 else 0,
-            "species_counts": output.get_species_counts(),
-            "summary_stats": output.get_summary_stats(),
-            "manual_review_stats": self.manual_review_collector.get_stats()
+            "processing_time": elapsed_total
         }
     
     def _process_detection(self, frame, bbox, track_id, confidence, class_id,
-                          frame_number, timestamp_sec, fps, output: OutputWriter, 
+                          frame_number, timestamp_sec, fps, output: OutputHandler, 
                           center_line, video_proc: VideoProcessor):
         """Process a single detection through the full pipeline."""
         x1, y1, x2, y2 = bbox
@@ -312,13 +302,13 @@ class FishCountingPipeline:
             if max_confidence is None:
                 max_confidence = confidence  # Fallback to current confidence
 
-            # Write to CSV
             video_timestamp = output.format_video_timestamp(frame_number, fps)
             frame_width, frame_height = video_proc.width, video_proc.height
             x_percent = (center_x / frame_width) * 100 if frame_width > 0 else 0
             y_percent = (center_y / frame_height) * 100 if frame_height > 0 else 0
             
-            output.write_count_record(
+            # Write count record
+            output.record_count(
                 video_timestamp=video_timestamp,
                 frame_number=frame_number,
                 track_id=track_id,
@@ -391,7 +381,6 @@ def main(config_file: str = None):
         
         print("\n🎉 Pipeline completed successfully!")
         print(f"Processed {results['frames_processed']} frames in {results['processing_time']:.1f}s")
-        print(f"Average FPS: {results['fps']:.1f}")
         
     except KeyboardInterrupt:
         print("\n⚠️  Pipeline interrupted by user")
