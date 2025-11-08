@@ -10,6 +10,7 @@ from typing import Dict
 from datetime import datetime
 from collections import defaultdict
 
+from ..config.settings import IOConfig
 from .output_handler import OutputHandler
 
 
@@ -20,15 +21,14 @@ class CloudOutputHandler(OutputHandler):
     Only tracks aggregated species counts, then writes to DynamoDB on finalize.
     """
     
-    def __init__(self, location: str, ladder: str, date_str: str, time_str: str):
-        self.location = location
-        self.ladder = ladder
-        self.date_str = date_str
-        self.time_str = time_str
+    def __init__(self, io_config: IOConfig):
+        self.location = io_config.location
+        self.ladder = io_config.ladder
+        self.date_str = io_config.date_str
+        self.time_str = io_config.time_str
         
         # Only track counts - no individual records
         self.species_counts = defaultdict(lambda: {"Upstream": 0, "Downstream": 0})
-        self.processing_start_time = datetime.now()
     
     def initialize(self) -> bool:
         """Initialize (nothing needed for cloud)."""
@@ -50,9 +50,6 @@ class CloudOutputHandler(OutputHandler):
     def write_final_counts(self) -> bool:
         """
         Atomically update aggregated counts in DynamoDB.
-        
-        This implementation uses UpdateItem + if_not_exists to prevent lost updates
-        when multiple writers run concurrently.
         """
         try:
             pk = f"{self.location}#{self.ladder}#{self.date_str}#{self.time_str}"
@@ -61,50 +58,75 @@ class CloudOutputHandler(OutputHandler):
             client = boto3.client('dynamodb')
             timestamp = datetime.now().isoformat()
 
-            # Ensure the base record exists (no-op if already exists)
+            # Base SET expressions (row metadata + ensure species_counts exists)
+            set_clauses = [
+                "location = :loc",
+                "ladder = :lad",
+                "date = :date",
+                "hour = :hour",
+                "last_updated = :ts",
+                "species_counts = if_not_exists(species_counts, :empty_map)"
+            ]
+
+            expr_attr_names = {}
+            expr_attr_values = {
+                ':loc': {'S': self.location},
+                ':lad': {'S': self.ladder},
+                ':date': {'S': self.date_str},
+                ':hour': {'S': self.time_str},
+                ':ts': {'S': timestamp},
+                ':empty_map': {'M': {}},
+                ':zero': {'N': '0'},
+            }
+
+            # Add SET increment expressions for each species
+            for idx, (species, directions) in enumerate(self.species_counts.items()):
+                sp = f"#sp{idx}"
+                expr_attr_names[sp] = species
+
+                up = f":u{idx}"
+                down = f":d{idx}"
+                expr_attr_values[up] = {'N': str(directions['Upstream'])}
+                expr_attr_values[down] = {'N': str(directions['Downstream'])}
+
+                # SET species_counts.<species> = if_not_exists(...)
+                set_clauses.append(
+                    f"species_counts.{sp} = if_not_exists(species_counts.{sp}, :empty_map)"
+                )
+
+                # SET species_counts.<species>.Upstream = if_not_exists(...) + increment
+                set_clauses.append(
+                    f"species_counts.{sp}.Upstream = if_not_exists(species_counts.{sp}.Upstream, :zero) + {up}"
+                )
+                set_clauses.append(
+                    f"species_counts.{sp}.Downstream = if_not_exists(species_counts.{sp}.Downstream, :zero) + {down}"
+                )
+
+            # Combine everything into a single UpdateExpression
+            update_expression = "SET " + ", ".join(set_clauses)
+
+            # Example final UpdateExpression:
+            # SET location = :loc,
+            #     ladder = :lad,
+            #     date = :date,
+            #     hour = :hour,
+            #     last_updated = :ts,
+            #     species_counts = if_not_exists(species_counts, :empty_map),
+            #     species_counts.#sp0 = if_not_exists(species_counts.#sp0, :empty_map),
+            #     species_counts.#sp0.Upstream = if_not_exists(species_counts.#sp0.Upstream, :zero) + :u0,
+            #     species_counts.#sp0.Downstream = if_not_exists(species_counts.#sp0.Downstream, :zero) + :d0,
+            #     species_counts.#sp1 = if_not_exists(species_counts.#sp1, :empty_map),
+            #     species_counts.#sp1.Upstream = if_not_exists(species_counts.#sp1.Upstream, :zero) + :u1,
+            #     species_counts.#sp1.Downstream = if_not_exists(species_counts.#sp1.Downstream, :zero) + :d1
             client.update_item(
                 TableName='fish-counts',
                 Key={'pk': {'S': pk}},
-                UpdateExpression="""
-                    SET location = :loc,
-                        ladder = :lad,
-                        date = :date,
-                        hour = :hour,
-                        last_updated = :ts
-                """,
-                ExpressionAttributeValues={
-                    ':loc': {'S': self.location},
-                    ':lad': {'S': self.ladder},
-                    ':date': {'S': self.date_str},
-                    ':hour': {'S': self.time_str},
-                    ':ts': {'S': timestamp}
-                }
+                UpdateExpression=update_expression,
+                ExpressionAttributeNames=expr_attr_names,
+                ExpressionAttributeValues=expr_attr_values
             )
 
-            # Atomically increment counts for each species
-            for species, directions in self.species_counts.items():
-                client.update_item(
-                    TableName='fish-counts',
-                    Key={'pk': {'S': pk}},
-                    UpdateExpression="""
-                        SET species_counts.#species.M.Upstream =
-                            if_not_exists(species_counts.#species.M.Upstream, :zero) + :up_inc,
-                            species_counts.#species.M.Downstream =
-                            if_not_exists(species_counts.#species.M.Downstream, :zero) + :down_inc,
-                            last_updated = :ts
-                    """,
-                    ExpressionAttributeNames={
-                        '#species': species
-                    },
-                    ExpressionAttributeValues={
-                        ':zero': {'N': '0'},
-                        ':up_inc': {'N': str(directions['Upstream'])},
-                        ':down_inc': {'N': str(directions['Downstream'])},
-                        ':ts': {'S': timestamp}
-                    }
-                )
-
-            print("✔ DynamoDB counts updated successfully (atomic)")
+            print("✔ DynamoDB counts updated successfully (atomic, single call, using + increments)")
             return True
 
         except Exception as e:

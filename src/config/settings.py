@@ -102,13 +102,15 @@ class IOConfig:
     # Input paths
     video_path: str = ""
     
-    # Output paths (will be auto-generated if empty)
+    # Local output paths (will be auto-generated if empty)
     csv_output_path: str = ""
     video_output_path: str = ""
     
     # Metadata
     location: str = ""
+    ladder: str = ""
     date_str: str = ""  # YYYY-MM-DD format
+    time_str: str = ""  # HHMM format
 
 
 @dataclass 

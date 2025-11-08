@@ -237,11 +237,11 @@ class FishCountingPipeline:
                 print("User requested quit.")
                 break
         
-        # Finalize manual review collector to save any remaining peak occlusions
-        self.manual_review_collector.finalize_processing()
-
         # Write final fish counts
         output.write_final_counts()
+
+        # Finalize manual review collector to save any remaining peak occlusions
+        self.manual_review_collector.finalize_processing()
         
         # Return results
         elapsed_total = time.time() - self.start_time
