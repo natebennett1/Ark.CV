@@ -13,9 +13,56 @@
       <a href="#overview" class="nav-link">Overview</a>
       <a href="#review" class="nav-link">Review Detections</a>
     </nav>
+    <div class="top-actions">
+      <a class="assist-button" href="mailto:nate@arkcv.com" title="Request assistance">
+        Request Assistance
+      </a>
+      <div class="profile" id="profile">
+        <button class="avatar" id="avatarButton" aria-haspopup="menu" aria-expanded="false" title="Account">
+          <!-- Simple user icon -->
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+            <circle cx="12" cy="8" r="4" fill="currentColor" opacity="0.9"/>
+            <path d="M4 20c0-4 4-6 8-6s8 2 8 6" fill="currentColor" opacity="0.6"/>
+          </svg>
+        </button>
+        <div class="menu" id="profileMenu" role="menu" aria-labelledby="avatarButton">
+          <button class="menu-item" id="logoutButton" role="menuitem">Logout</button>
+        </div>
+      </div>
+    </div>
   </header>
 
   <main>
+    <section class="card" id="filters">
+      <header class="card-header">
+        <h2>Filters</h2>
+        <p>Select criteria to refine dashboard and review.</p>
+      </header>
+      <div class="filters-grid">
+        <label class="filter-field">
+          <span>Species</span>
+          <select id="filter-species">
+            <option value="">All species</option>
+          </select>
+        </label>
+        <label class="filter-field">
+          <span>Adipose Presence</span>
+          <select id="filter-adipose">
+            <option value="">Any</option>
+            <option value="true">Adipose present</option>
+            <option value="false">No adipose</option>
+          </select>
+        </label>
+        <label class="filter-field">
+          <span>Time Frame</span>
+          <select id="filter-timeframe">
+            <option value="7d">Last 7 days</option>
+            <option value="30d">Last 30 days</option>
+            <option value="ytd">Year to date</option>
+          </select>
+        </label>
+      </div>
+    </section>
     <section id="overview" class="card-grid">
       <article class="stat-card">
         <h2>Year-To-Date</h2>
@@ -51,6 +98,25 @@
       </div>
     </section>
   </main>
+
+  <!-- Centered modal for Change Species -->
+  <div id="modal-overlay" class="modal-overlay" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <header class="modal-header">
+        <h3 id="modal-title">Change Species</h3>
+      </header>
+      <div class="modal-body">
+        <label class="filter-field" style="width:100%">
+          <span>Species name</span>
+          <input id="modal-species-input" type="text" class="input" placeholder="Enter species" />
+        </label>
+      </div>
+      <footer class="modal-footer">
+        <button id="modal-cancel" class="button">Cancel</button>
+        <button id="modal-save" class="button primary">Save</button>
+      </footer>
+    </div>
+  </div>
 
   <template id="review-card-template">
     <article class="review-card">

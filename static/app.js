@@ -21,6 +21,7 @@ const lowConfidenceDetections = [
     confidence: 0.42,
     detectedAt: '2024-03-28T07:23:00Z',
     location: 'Station 12B',
+    adipose: true,
     imageUrl: 'https://images.unsplash.com/photo-1585128792020-803d29415281?auto=format&fit=crop&w=600&q=80',
   },
   {
@@ -29,6 +30,7 @@ const lowConfidenceDetections = [
     confidence: 0.37,
     detectedAt: '2024-03-27T15:41:00Z',
     location: 'Station 07A',
+    adipose: false,
     imageUrl: 'https://images.unsplash.com/photo-1508184964240-ee94ad12880e?auto=format&fit=crop&w=600&q=80',
   },
   {
@@ -37,12 +39,15 @@ const lowConfidenceDetections = [
     confidence: 0.35,
     detectedAt: '2024-03-27T04:18:00Z',
     location: 'Station 04C',
+    adipose: true,
     imageUrl: 'https://images.unsplash.com/photo-1533090161767-e6ffed986c88?auto=format&fit=crop&w=600&q=80',
   },
 ];
 
 const state = {
   detections: structuredClone(lowConfidenceDetections),
+  filters: { species: '', adipose: '', timeframe: '7d' },
+  ui: { menuOpen: false, modalOpen: false, currentChangeId: null },
 };
 
 const formatNumber = (value) =>
@@ -93,17 +98,56 @@ const handleAccept = (id) => {
   renderDetections();
 };
 
-const handleChangeSpecies = (id) => {
-  const detection = state.detections.find((item) => item.id === id);
+// Modal-based change species
+const openChangeSpeciesModal = (id) => {
+  state.ui.currentChangeId = id;
+  const detection = state.detections.find((d) => d.id === id);
   if (!detection) return;
+  const input = document.getElementById('modal-species-input');
+  input.value = detection.species;
+  document.getElementById('modal-overlay').classList.add('show');
+  state.ui.modalOpen = true;
+};
 
-  const newSpecies = prompt('Enter the correct species name:', detection.species);
+const closeChangeSpeciesModal = () => {
+  document.getElementById('modal-overlay').classList.remove('show');
+  state.ui.modalOpen = false;
+  state.ui.currentChangeId = null;
+};
 
-  if (newSpecies && newSpecies.trim().length > 0) {
-    detection.species = newSpecies.trim();
+const saveChangeSpeciesModal = () => {
+  const id = state.ui.currentChangeId;
+  const detection = state.detections.find((d) => d.id === id);
+  if (!detection) return;
+  const value = document.getElementById('modal-species-input').value.trim();
+  if (value) {
+    detection.species = value;
     detection.confidence = 1;
     renderDetections();
   }
+  closeChangeSpeciesModal();
+};
+
+const getFilteredDetections = () => {
+  const { species, adipose, timeframe } = state.filters;
+  const now = new Date('2024-03-29T00:00:00Z'); // demo reference date
+  const minDate = (() => {
+    if (timeframe === '7d') return new Date(now.getTime() - 7 * 86400000);
+    if (timeframe === '30d') return new Date(now.getTime() - 30 * 86400000);
+    return new Date(now.getFullYear(), 0, 1);
+  })();
+  return state.detections.filter((d) => {
+    if (species && d.species !== species) return false;
+    if (adipose !== '') {
+      const want = adipose === 'true';
+      if (!!d.adipose !== want) return false;
+    }
+    if (d.detectedAt) {
+      const t = new Date(d.detectedAt);
+      if (t < minDate || t > now) return false;
+    }
+    return true;
+  });
 };
 
 const renderDetections = () => {
@@ -111,7 +155,9 @@ const renderDetections = () => {
   const template = document.getElementById('review-card-template');
   container.innerHTML = '';
 
-  if (state.detections.length === 0) {
+  const list = getFilteredDetections();
+
+  if (list.length === 0) {
     const emptyState = document.createElement('div');
     emptyState.className = 'empty-state';
     emptyState.innerHTML = `
@@ -122,7 +168,7 @@ const renderDetections = () => {
     return;
   }
 
-  state.detections.forEach((detection) => {
+  list.forEach((detection) => {
     const card = template.content.firstElementChild.cloneNode(true);
     const image = card.querySelector('.review-image');
     const speciesName = card.querySelector('.species-name');
@@ -140,16 +186,64 @@ const renderDetections = () => {
     location.textContent = detection.location;
 
     acceptButton.addEventListener('click', () => handleAccept(detection.id));
-    changeButton.addEventListener('click', () => handleChangeSpecies(detection.id));
+    changeButton.addEventListener('click', () => openChangeSpeciesModal(detection.id));
 
     container.appendChild(card);
+  });
+};
+
+const renderFilters = () => {
+  const select = document.getElementById('filter-species');
+  const speciesSet = new Set(state.detections.map((d) => d.species));
+  // Clear all but the first option
+  while (select.options.length > 1) select.remove(1);
+  [...speciesSet].sort().forEach((s) => {
+    const opt = document.createElement('option');
+    opt.value = s; opt.textContent = s; select.appendChild(opt);
+  });
+};
+
+const wireUI = () => {
+  // Profile menu
+  const avatarButton = document.getElementById('avatarButton');
+  const menu = document.getElementById('profileMenu');
+  const logoutButton = document.getElementById('logoutButton');
+  avatarButton.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const open = menu.classList.toggle('open');
+    avatarButton.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+  document.addEventListener('click', () => menu.classList.remove('open'));
+  logoutButton.addEventListener('click', () => alert('Logout (placeholder)'));
+
+  // Filters
+  document.getElementById('filter-species').addEventListener('change', (e) => {
+    state.filters.species = e.target.value;
+    renderDetections();
+  });
+  document.getElementById('filter-adipose').addEventListener('change', (e) => {
+    state.filters.adipose = e.target.value;
+    renderDetections();
+  });
+  document.getElementById('filter-timeframe').addEventListener('change', (e) => {
+    state.filters.timeframe = e.target.value;
+    renderDetections();
+  });
+
+  // Modal events
+  document.getElementById('modal-cancel').addEventListener('click', closeChangeSpeciesModal);
+  document.getElementById('modal-save').addEventListener('click', saveChangeSpeciesModal);
+  document.getElementById('modal-overlay').addEventListener('click', (e) => {
+    if (e.target.id === 'modal-overlay') closeChangeSpeciesModal();
   });
 };
 
 const init = () => {
   renderStats();
   renderTrend();
+  renderFilters();
   renderDetections();
+  wireUI();
 };
 
 document.addEventListener('DOMContentLoaded', init);
