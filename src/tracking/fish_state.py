@@ -5,9 +5,8 @@ This module handles the temporal state of tracked fish, including species voting
 direction detection, and crossing counting.
 """
 
-from dataclasses import dataclass, field
 from collections import deque, defaultdict
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple, List
 
 from ..config.settings import CountingConfig
 
@@ -36,80 +35,89 @@ class FishState:
         # Anti-oscillation tracking
         self.last_crossing_direction: Optional[str] = None
         self.consecutive_opposite_crossings = 0
-        
-        # Temporal voting queues
-        self.species_votes = deque(maxlen=stability_window)
-        self.adipose_votes = deque(maxlen=adipose_window)
-        
-        # Confidence tracking for QA
-        self.confidence_history: deque = deque()
+
+        # Species detection history: stores species confidence history with no length limit for confidence lookup
+        self.species_detection_history: Dict[str, List[float]] = defaultdict(list)
+
+        # Temporal voting window: last N detections for stability
+        self.recent_species_detections = deque(maxlen=stability_window)
+
+        # Adipose detection history: stores all adipose detections with confidence (no limit)
+        # Format: {"Present": [conf1, conf2, ...], "Absent": [conf1, conf2, ...], "Unknown": [...]}
+        self.adipose_detection_history: Dict[str, List[float]] = defaultdict(list)
     
     def update_position(self, x: int, y: int):
         """Update the fish's position."""
         self.last_x = x
         self.last_y = y
     
-    def add_species_vote(self, species: str):
-        """Add a species classification vote."""
-        self.species_votes.append(species)
+    def add_species_detection(self, species: str, confidence: float):
+        """Add a species detection with its confidence."""
+        detection = (species, confidence)
+        self.species_detection_history[species].append(confidence)
+        self.recent_species_detections.append(detection)
     
-    def add_adipose_vote(self, adipose_status: str):
-        """Add an adipose fin status vote."""
-        if adipose_status and adipose_status != "Unknown":
-            self.adipose_votes.append(adipose_status)
+    def add_adipose_detection(self, adipose_status: str, confidence: float):
+        """Add an adipose fin detection with its confidence."""
+        self.adipose_detection_history[adipose_status].append(confidence)
     
-    def add_confidence(self, confidence: float):
-        """Add a confidence value to history."""
-        self.confidence_history.append(confidence)
-    
-    def get_max_confidence(self) -> Optional[float]:
-        """Get max confidence from history."""
-        if not self.confidence_history:
-            return None
-        return max(self.confidence_history)
-
-    def get_stable_species(self) -> Optional[str]:
-        """Get the most voted species classification."""
-        if not self.species_votes:
-            return None
+    def get_stable_species_with_confidence(self) -> Tuple[str, float]:
+        """
+        Get the most voted species from recent detections along with its max confidence.
         
-        # Count votes
-        vote_counts = defaultdict(int)
-        for vote in self.species_votes:
-            vote_counts[vote] += 1
+        Returns:
+            Tuple of (species_name, max_confidence_for_that_species)
+        """
+        # Group detections by species
+        species_detections = defaultdict(list)
+        for species, conf in self.recent_species_detections:
+            species_detections[species].append(conf)
         
-        if not vote_counts:
-            return None
+        # Find species with most votes
+        vote_counts = {species: len(confs) for species, confs in species_detections.items()}
         
-        # Create recency map (most recent = 0, oldest = len-1)
-        recency_map = {vote: i for i, vote in enumerate(reversed(self.species_votes))}
+        # Create recency map for tie-breaking
+        recency_map = {}
+        for i, (species, _) in enumerate(reversed(self.recent_species_detections)):
+            if species not in recency_map:
+                recency_map[species] = i
         
-        # Break ties by most recent vote
+        # Get winning species (by vote count, ties broken by recency)
         best_species = max(vote_counts.items(), 
-                        key=lambda kv: (kv[1], -recency_map[kv[0]]))
+                        key=lambda kv: (kv[1], -recency_map[kv[0]]))[0]
         
-        return best_species[0]
+        # Get max confidence for that species across ALL history (not just recent window)
+        all_confidences_for_species = self.species_detection_history[best_species]
+        max_conf = max(all_confidences_for_species)
+        
+        return best_species, max_conf
     
-    def get_stable_adipose(self) -> Optional[str]:
-        """Get the most voted adipose fin status."""
-        if not self.adipose_votes:
-            return None
+    def get_stable_adipose(self) -> str:
+        """
+        Get the most confident adipose fin status from entire detection history.
         
-        vote_counts = defaultdict(int)
-        for vote in self.adipose_votes:
-            vote_counts[vote] += 1
+        Strategy: Since adipose fins are small and easily obstructed, we prioritize
+        any clear detection over temporal voting. If we ever saw "Present" or "Absent"
+        with high confidence, use that. Only fall back to "Unknown" if we never got
+        a confident detection.
         
-        if not vote_counts:
-            return None
+        Returns:
+            Adipose status: "Present", "Absent", or "Unknown"
+        """
+        # Collect max confidence for each status (ignoring "Unknown")
+        status_confidences = {}
         
-        # Create recency map (most recent = 0, oldest = len-1)
-        recency_map = {vote: i for i, vote in enumerate(reversed(self.adipose_votes))}
+        for status in ["Present", "Absent"]:
+            if self.adipose_detection_history[status]:
+                status_confidences[status] = max(self.adipose_detection_history[status])
         
-        # Break ties by most recent vote
-        best_adipose = max(vote_counts.items(),
-                          key=lambda kv: (kv[1], -recency_map[kv[0]]))
+        # If we have any confident detections, use the one with highest confidence
+        if status_confidences:
+            best_status = max(status_confidences.items(), key=lambda x: x[1])[0]
+            return best_status
         
-        return best_adipose[0]
+        # If we only have "Unknown" detections or no detections at all
+        return "Unknown"
     
     def can_count(self, current_frame: int, cooldown_frames: int = 0) -> bool:
         """Check if this fish can be counted (respects cooldown)."""
@@ -198,9 +206,9 @@ class FishStateManager:
                 last_x=initial_x,
                 last_y=initial_y
             )
+
             # Set proper maxlen for voting queues
-            state.species_votes = deque(maxlen=self.config.stability_window)
-            state.adipose_votes = deque(maxlen=self.config.adipose_window)
+            state.recent_species_detections = deque(maxlen=self.config.stability_window)
             
             self.fish_states[track_id] = state
         

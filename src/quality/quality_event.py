@@ -13,9 +13,10 @@ from typing import List, Tuple, Optional
 class EventType(Enum):
     """Types of quality assurance events."""
     OCCLUSION = "occlusion"
-    LOW_CONFIDENCE = "low_confidence"
-    UNKNOWN_SPECIES = "unknown_species"
     BULL_TROUT = "bull_trout"  # Special case: always capture
+    UNKNOWN_SPECIES = "unknown_species"
+    UNKNOWN_ADIPOSE = "unknown_adipose"
+    LOW_CONFIDENCE = "low_confidence"
     MULTIPLE_ISSUES = "multiple_issues"  # Merged event types
 
 
@@ -68,6 +69,7 @@ class QualityEvent:
             EventType.OCCLUSION: "OCCLUSION",
             EventType.LOW_CONFIDENCE: f"LOW CONF ({self.confidence:.2f})" if self.confidence is not None else "LOW CONF",
             EventType.UNKNOWN_SPECIES: "UNKNOWN SPECIES",
+            EventType.UNKNOWN_ADIPOSE: "UNKNOWN ADIPOSE",
             EventType.BULL_TROUT: "BULL TROUT",
             EventType.MULTIPLE_ISSUES: "MULTIPLE ISSUES"
         }

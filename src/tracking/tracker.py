@@ -79,7 +79,8 @@ class TrackingManager:
                          bbox: Tuple[int, int, int, int],
                          species: str,
                          confidence: float,
-                         adipose_status: Optional[str] = None) -> Tuple[FishState, Optional[str]]:
+                         adipose_status: Optional[str] = None,
+                         adipose_confidence: Optional[float] = None) -> Tuple[FishState, Optional[str]]:
         """
         Process a single detection and update tracking state.
         
@@ -105,9 +106,9 @@ class TrackingManager:
         fish_state.last_confidence = confidence
         
         # Update voting queues
-        fish_state.add_species_vote(species)
-        if adipose_status:
-            fish_state.add_adipose_vote(adipose_status)
+        fish_state.add_species_detection(species, confidence)
+        if adipose_status and adipose_confidence is not None:
+            fish_state.add_adipose_detection(adipose_status, adipose_confidence)
         
         # Detect direction
         direction = self.determine_direction(fish_state, center_x)

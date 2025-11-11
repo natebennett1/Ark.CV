@@ -25,12 +25,16 @@ class SpeciesRules:
     # Valid species for each location
     SPECIES_BY_LOCATION: Dict[str, List[str]] = {
         "Wells Dam": [
-            "Chinook_AA", "Chinook_AP", "Chinook_U",
-            "Coho_AA", "Coho_AP", "Coho_U", 
-            "Sockeye_AA", "Sockeye_AP", "Sockeye_U",
-            "Steelhead_AA", "Steelhead_AP", "Steelhead_U",
-            "Lamprey", "Pike", "BullTrout", "Suckerfish", 
-            "ResidentFish", "Pink"
+            "Chinook",
+            "Coho",
+            "Sockeye",
+            "Steelhead",
+            "Lamprey",
+            "Pike",
+            "BullTrout",
+            "Suckerfish",
+            "ResidentFish",
+            "Pink"
         ],
     }
 
@@ -85,18 +89,6 @@ class SpeciesRules:
         """
         s = label.strip()
         
-        def make_adipose_label(base: str, status_str: str) -> str:
-            if 'Present' in status_str:
-                return f"{base}_AP"
-            elif 'Absent' in status_str:
-                return f"{base}_AA"
-            else:
-                return f"{base}_U"
-        
-        for salmonid in SpeciesRules.SALMONIDS:
-            if salmonid in s and "Adipose" in s:
-                return make_adipose_label(salmonid, s)
-        
         # Handle legacy names
         if s == "Pike Minnow":
             return "Pike"
@@ -109,43 +101,13 @@ class SpeciesRules:
         
         return s
     
-    
     @staticmethod
-    def extract_base_species(label: str) -> str:
-        """
-        Extract the base species name from a label.
-        
-        Handles labels like "Chinook_AA" -> "Chinook" or "Pike" -> "Pike"
-        
-        Args:
-            label: Species label (possibly with adipose suffix)
-            
-        Returns:
-            Base species name without any suffix
-        """
-        if "_" in label:
-            return label.split("_", 1)[0]
-        
-        # Check for known species in the label
-        known_species = [
-            "Chinook", "Coho", "Sockeye", "Steelhead", 
-            "Pike", "BullTrout", "Pink", "Lamprey", 
-            "Suckerfish", "ResidentFish"
-        ]
-        
-        for species in known_species:
-            if species in label:
-                return species
-        
-        return label
-    
-    @staticmethod
-    def validate_species_label(normalized_species: str, location: str, check_date: date) -> Tuple[bool, str]:
+    def validate_species_label(species: str, location: str, check_date: date) -> Tuple[bool, str]:
         """
         Validate if a species label is allowed at a location and date.
         
         Args:
-            normalized_species: Normalized species label
+            species: Normalized species label
             location: Location name
             check_date: Date to check
             
@@ -154,24 +116,21 @@ class SpeciesRules:
             - If valid: (True, species_label)
             - If invalid: (False, best_alternative_or_"Unknown")
         """
-        base_species = SpeciesRules.extract_base_species(normalized_species)
         allowed = SpeciesRules.get_allowed_species(location)
         
         # Check if exact label is allowed and in season
-        if normalized_species in allowed and SpeciesRules.is_in_season(base_species, location, check_date):
-            return True, normalized_species
+        if species in allowed and SpeciesRules.is_in_season(species, location, check_date):
+            return True, species
         
-        # Try to find a fallback with the same base species
-        fallback = SpeciesRules.find_best_matching_label(base_species, location, check_date)
-        return False, fallback
+        return False, "Unknown"
     
     @staticmethod
-    def is_in_season(base_species: str, location: str, check_date: date) -> bool:
+    def is_in_season(species: str, location: str, check_date: date) -> bool:
         """
         Check if a species is in season at the given location and date.
         
         Args:
-            base_species: Base species name (without adipose suffix)
+            species: Species name
             location: Location name
             check_date: Date to check
             
@@ -180,59 +139,33 @@ class SpeciesRules:
         """
         seasons = SpeciesRules.get_seasonal_ranges(check_date.year, location)
         
-        if base_species == "Chinook":
+        if species == "Chinook":
             for season_key in ["chinook_spring", "chinook_summer", "chinook_fall"]:
                 for start, end in seasons.get(season_key, []):
                     if start <= check_date <= end:
                         return True
             return False
         
-        if base_species == "Coho":
+        if species == "Coho":
             if location == "Wells Dam":
                 return SpeciesRules.is_coho_allowed_wells_dam(check_date)
             # Default Coho season
             return date(check_date.year, 8, 1) <= check_date <= date(check_date.year, 11, 30)
         
-        if base_species == "Sockeye":
+        if species == "Sockeye":
             return any(start <= check_date <= end 
                       for start, end in seasons.get("sockeye_run", []))
         
-        if base_species == "Steelhead":
+        if species == "Steelhead":
             return any(start <= check_date <= end 
                       for start, end in seasons.get("steelhead_run", []))
         
-        if base_species == "Lamprey":
+        if species == "Lamprey":
             return any(start <= check_date <= end 
                       for start, end in seasons.get("lamprey_run", []))
         
         # Default: species is always in season
         return True
-    
-    @staticmethod
-    def find_best_matching_label(base_species: str, location: str, check_date: date) -> str:
-        """
-        Find the best matching species label for a base species.
-        
-        Used when a detection doesn't match an exact allowed label. This tries to find
-        a valid label with the same base species that's currently in season.
-        
-        Args:
-            base_species: Base species name
-            location: Location name
-            check_date: Date to check
-            
-        Returns:
-            Best matching label, or "Unknown" if none found
-        """
-        allowed = SpeciesRules.get_allowed_species(location)
-        
-        # Try to find an allowed species with the same base that's in season
-        for candidate_label in allowed:
-            candidate_base = SpeciesRules.extract_base_species(candidate_label)
-            if candidate_base == base_species and SpeciesRules.is_in_season(candidate_base, location, check_date):
-                return candidate_label
-        
-        return "Unknown"
     
     @staticmethod
     def is_coho_allowed_wells_dam(check_date: date) -> bool:
@@ -268,12 +201,12 @@ class SpeciesRules:
         Convert adipose fin status word to tag suffix.
         
         Args:
-            status: Status word ("Present", "Absent", or other)
+            status: Status word ("Present", "Absent", or "Unknown")
             
         Returns:
             Tag suffix: "AP" (present), "AA" (absent), or "U" (unknown)
         """
-        return {"Present": "AP", "Absent": "AA"}.get(status, "U")
+        return {"Present": "AP", "Absent": "AA", "Unknown": "U"}.get(status, "U")
     
     @staticmethod
     def apply_adipose_suffix(species: str, adipose_status: str) -> str:
@@ -289,10 +222,8 @@ class SpeciesRules:
         Returns:
             Species name with appropriate adipose suffix
         """
-        base = SpeciesRules.extract_base_species(species)
-
-        if base not in SpeciesRules.SALMONIDS:
+        if species not in SpeciesRules.SALMONIDS:
             return species
 
         tag = SpeciesRules.adipose_tag_from_status(adipose_status)
-        return f"{base}_{tag}"
+        return f"{species}_{tag}"

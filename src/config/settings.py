@@ -17,14 +17,14 @@ class ModelConfig:
     """Configuration for YOLO models."""
     # Primary detection model
     model_path: str = ""
-    confidence_threshold: float = 0.10
+    confidence_threshold: float = 0.56
     iou_threshold: float = 0.25
     max_detections: int = 200
     device: str = "auto"  # "auto", "cuda", "cpu"
     
     # Optional adipose fin detection model
     adipose_model_path: str = ""
-    adipose_min_confidence: float = 0.50
+    adipose_min_confidence: float = 0.80
     adipose_expand_ratio: float = 0.20
 
 
@@ -48,7 +48,7 @@ class BotsortConfig:
 @dataclass
 class ClassificationConfig:
     """Configuration for species classification."""
-    unknown_threshold: float = 0.25
+    unknown_threshold: float = 0.30
     min_class_confidence: Dict[str, float] = field(default_factory=lambda: {
         "BullTrout": 0.80
     })

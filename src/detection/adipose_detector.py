@@ -6,6 +6,8 @@ refinement for salmonid species classification.
 """
 
 import numpy as np
+import torch
+import traceback
 from typing import Optional, Tuple
 from ultralytics import YOLO
 
@@ -23,7 +25,13 @@ class AdiposeDetector:
     def __init__(self, model_config: ModelConfig):
         self.model_config = model_config
         self.model: Optional[YOLO] = None
-        self.device = "cuda" if model_config.device == "auto" else model_config.device
+        self.device = self._determine_device()
+
+    def _determine_device(self) -> str:
+        """Determine the best available device."""
+        if self.model_config.device == "auto":
+            return "cuda" if torch.cuda.is_available() else "cpu"
+        return self.model_config.device
         
     def load_model(self) -> bool:
         """
@@ -35,16 +43,18 @@ class AdiposeDetector:
         if not self.model_config.adipose_model_path:
             print("ℹ No adipose model provided; skipping second-pass refinement.")
             return False
-        
+
+        print(f"Attempting to load model from: {self.model_config.adipose_model_path}")
+
         try:
             self.model = YOLO(self.model_config.adipose_model_path).to(self.device)
             self.model.model.eval()
-            print(f"✔ Adipose model loaded: {self.model_config.adipose_model_path}")
+            print(f"✔ Adipose model loaded successfully on device: {self.device}")
             return True
         except Exception as e:
-            print(f"⚠ Could not load adipose model: {e}")
-            self.model = None
-            return False
+            print(f"✖ Failed to load model: {e}")
+            traceback.print_exc()
+            raise
     
     def _expand_box(self, x1: int, y1: int, x2: int, y2: int, 
                    frame_width: int, frame_height: int, ratio: float = 0.20) -> Tuple[int, int, int, int]:
@@ -121,7 +131,13 @@ class AdiposeDetector:
     
     def cleanup(self) -> None:
         """Clean up resources."""
+        if self.model is not None:
+            # Clear GPU cache if using CUDA
+            if self.device == "cuda" and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        
         self.model = None
+        print("✔ Adipose detector resources cleaned up")
     
     @property
     def is_loaded(self) -> bool:

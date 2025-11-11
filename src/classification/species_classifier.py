@@ -55,10 +55,9 @@ class SpeciesClassifier:
         """
         # Step 1: Normalize the raw model output
         normalized_species = SpeciesRules.normalize_legacy_output(raw_species)
-        base_species = SpeciesRules.extract_base_species(normalized_species)
         
         # Step 2: Apply confidence thresholds
-        min_confidence = self._get_minimum_confidence(base_species)
+        min_confidence = self._get_minimum_confidence(normalized_species)
         if confidence < min_confidence:
             return "Unknown", f"Confidence {confidence:.3f} below threshold {min_confidence:.3f}"
         
@@ -71,29 +70,25 @@ class SpeciesClassifier:
         
         if is_valid:
             return result_species, "Classification successful"
-        
-        # result_species contains the fallback or "Unknown"
-        if result_species == "Unknown":
-            return "Unknown", f"Species '{base_species}' not allowed at {self.location} on {self.check_date}"
-        else:
-            return result_species, f"Adjusted from '{normalized_species}' to '{result_species}' based on location rules"
+
+        return "Unknown", f"Species '{normalized_species}' not allowed at {self.location} on {self.check_date}"
     
-    def _get_minimum_confidence(self, base_species: str) -> float:
+    def _get_minimum_confidence(self, species: str) -> float:
         """
-        Get the minimum confidence threshold for a base species.
+        Get the minimum confidence threshold for a species.
         
         Uses species-specific thresholds from config, falling back to the
         general unknown_threshold if no specific threshold is defined.
         
         Args:
-            base_species: Base species name
+            species: Species name
             
         Returns:
             Minimum confidence threshold (0.0 to 1.0)
         """
         return max(
             self.config.unknown_threshold,
-            self.config.min_class_confidence.get(base_species, self.config.unknown_threshold)
+            self.config.min_class_confidence.get(species, self.config.unknown_threshold)
         )
 
     def apply_adipose_refinement(self, detected_species: str, adipose_status: str) -> str:
@@ -105,25 +100,25 @@ class SpeciesClassifier:
         
         Args:
             detected_species: Detected species name
-            adipose_status: Adipose fin status ("Present", "Absent", or other)
+            adipose_status: Adipose fin status ("Present", "Absent", or ""Unknown")
             
         Returns:
             Species name with appropriate adipose suffix
         """
         return SpeciesRules.apply_adipose_suffix(detected_species, adipose_status)
     
-    def classify_by_size(self, base_species: str, length_inches: float) -> Optional[str]:
+    def classify_by_size(self, species: str, length_inches: float) -> Optional[str]:
         """
         Classify fish by size categories (adult, jack, etc.).
         
         Args:
-            base_species: Base species name
+            species: Species name
             length_inches: Fish length in inches
             
         Returns:
             Size classification or None if no size thresholds defined
         """
-        thresholds = self.config.size_thresholds.get(base_species)
+        thresholds = self.config.size_thresholds.get(species)
         if not thresholds:
             return None
         

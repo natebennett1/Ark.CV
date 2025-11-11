@@ -261,47 +261,43 @@ class FishCountingPipeline:
         raw_species = self.detector.get_class_name(class_id)
         
         # Classify species with business rules
-        classified_species, classification_reason = self.species_classifier.classify_detection(raw_species, confidence)
+        classified_species, _ = self.species_classifier.classify_detection(raw_species, confidence)
+        # TODO: Remove later
+        # print(f"DEBUG: Track {track_id} - class_id={class_id}, raw_species={raw_species}, classified={classified_species}, conf={confidence:.2f}")
         
         # Detect adipose status for this frame (if applicable)
         current_adipose_status = None
-        if self.adipose_detector.is_loaded and "_U" in classified_species:
-            current_adipose_status, adipose_conf = self.adipose_detector.infer_adipose_status(
-                frame, bbox
-            )
-        
-        # Update tracking state (this adds adipose vote to the queue)
+        if self.adipose_detector.is_loaded:
+            current_adipose_status, current_adipose_conf = self.adipose_detector.infer_adipose_status(frame, bbox)
+            # TODO: Remove later
+            # print(f"DEBUG: Track {track_id} - adipose_status={current_adipose_status}, conf={current_adipose_conf:.2f}")
+
+        # Update tracking state (this adds species and adipose votes to their respective queues)
         fish_state, direction = self.tracking_manager.process_detection(
-            track_id, bbox, classified_species, confidence, 
-            adipose_status=current_adipose_status
+            track_id,
+            bbox,
+            classified_species,
+            confidence, 
+            adipose_status=current_adipose_status,
+            adipose_confidence=current_adipose_conf
         )
         
-        # Add current confidence to history for QA tracking
-        fish_state.add_confidence(confidence)
+        # Get stable species from temporal voting with its max confidence
+        stable_species, species_max_confidence = fish_state.get_stable_species_with_confidence()
         
-        # Get stable species from temporal voting
-        stable_species = fish_state.get_stable_species() or "Unknown"
-        
-        # Apply adipose refinement using temporal voting (if we have enough votes)
-        stable_adipose = fish_state.get_stable_adipose()
-        if stable_adipose and stable_adipose in {"Present", "Absent"} and "_U" in stable_species:
+        # Apply adipose refinement using temporal voting
+        if self.adipose_detector.is_loaded:
+            stable_adipose = fish_state.get_stable_adipose()
             stable_species = self.species_classifier.apply_adipose_refinement(stable_species, stable_adipose)
         
         # Check for counting
         can_count = (direction is not None and 
-                    #TODO (keep?): stable_species != "Unknown" and
                     self.tracking_manager.can_count_crossing(fish_state, direction, frame_number))
         
         if can_count:
             # Record the count
             self.tracking_manager.record_crossing(fish_state, direction, frame_number)
             
-            # Use the maximum confidence from history to catch fish that may have had low confidence
-            # consistently during tracking, not just at the crossing moment
-            max_confidence = fish_state.get_max_confidence()
-            if max_confidence is None:
-                max_confidence = confidence  # Fallback to current confidence
-
             video_timestamp = output.format_video_timestamp(frame_number, fps)
             frame_width, frame_height = video_proc.width, video_proc.height
             x_percent = (center_x / frame_width) * 100 if frame_width > 0 else 0
@@ -313,7 +309,7 @@ class FishCountingPipeline:
                 frame_number=frame_number,
                 track_id=track_id,
                 species=stable_species,
-                confidence=max_confidence,
+                confidence=species_max_confidence,
                 direction=direction,
                 x_percent=x_percent,
                 y_percent=y_percent,
@@ -329,9 +325,8 @@ class FishCountingPipeline:
                 bbox=bbox,
                 frame_idx=frame_number,
                 timestamp_sec=timestamp_sec,
-                video_name=os.path.basename(self.config.io.video_path),
                 species=stable_species,
-                confidence=max_confidence,
+                confidence=species_max_confidence,
                 direction=direction
             )
         
@@ -372,7 +367,7 @@ def main():
             config = ConfigLoader.load_config_from_sqs_message(sqs_message, model_s3_bucket, model_s3_key)
         else:
             print("Running in local mode. Loading configuration from: configs/local.json.")
-            config = ConfigLoader.load_config_from_file("configs/alex.json")
+            config = ConfigLoader.load_config_from_file("configs/local.json")
 
         # Create and run pipeline
         pipeline = FishCountingPipeline(config, is_cloud)

@@ -89,6 +89,7 @@ class ManualReviewCollector:
             "occlusions_detected": 0,
             "low_conf_detected": 0,
             "unknown_species_detected": 0,
+            "unknown_adipose_detected": 0,
             "bull_trout_detected": 0,
             "events_merged": 0,
             "events_skipped": 0  # Skipped due to overlap prevention
@@ -164,10 +165,14 @@ class ManualReviewCollector:
         # Update active clip recorders
         self._update_active_clips(frame, frame_idx, timestamp_sec, video_name)
     
-    def report_crossing_event(self, track_id: int, bbox: Tuple[int, int, int, int],
-                             frame_idx: int, timestamp_sec: float, video_name: str,
-                             species: Optional[str], confidence: Optional[float],
-                             direction: str):
+    def report_crossing_event(self,
+                              track_id: int,
+                              bbox: Tuple[int, int, int, int],
+                              frame_idx: int,
+                              timestamp_sec: float,
+                              species: Optional[str],
+                              confidence: Optional[float],
+                              direction: str):
         """
         Report a fish crossing event for potential QA clip capture.
         
@@ -184,15 +189,19 @@ class ManualReviewCollector:
         # Determine event type
         if species == "BullTrout":
             event_type = EventType.BULL_TROUT
-            proximity_score = 1.0  # Maximum priority
+            proximity_score = 1.0 # Maximum priority
             self.stats["bull_trout_detected"] += 1
         elif species is None or species == "Unknown":
             event_type = EventType.UNKNOWN_SPECIES
-            proximity_score = 0.9  # High priority
+            proximity_score = 0.9 # High priority
             self.stats["unknown_species_detected"] += 1
-        elif confidence is not None and confidence < 0.8:  # Configurable threshold
+        elif "_U" in species:
+            event_type = EventType.UNKNOWN_ADIPOSE
+            proximity_score = 0.9 # High priority
+            self.stats["unknown_adipose_detected"] += 1
+        elif confidence is not None and confidence < 0.8:
             event_type = EventType.LOW_CONFIDENCE
-            proximity_score = 1.0 - confidence  # Lower confidence = higher score
+            proximity_score = 1.0 - confidence # Lower confidence = higher score
             self.stats["low_conf_detected"] += 1
         else:
             # Don't create an event for confident crossings
@@ -395,5 +404,6 @@ class ManualReviewCollector:
         print(f"  Events: {self.stats['occlusions_detected']} occlusions, "
               f"{self.stats['low_conf_detected']} low-conf, "
               f"{self.stats['unknown_species_detected']} unknown, "
+              f"{self.stats['unknown_adipose_detected']} unknown adipose, "
               f"{self.stats['bull_trout_detected']} bull trout")
         print(f"  Merged: {self.stats['events_merged']}, Skipped: {self.stats['events_skipped']}")
