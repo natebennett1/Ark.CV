@@ -113,6 +113,7 @@ const openChangeSpeciesModal = (id) => {
   select.value = SPECIES_OPTIONS.includes(lead) ? lead : '';
   document.getElementById('modal-overlay').classList.add('show');
   state.ui.modalOpen = true;
+  setTimeout(() => select.focus(), 0);
 };
 
 const closeChangeSpeciesModal = () => {
@@ -143,7 +144,7 @@ const getFilteredDetections = () => {
     return new Date(now.getFullYear(), 0, 1);
   })();
   return state.detections.filter((d) => {
-    if (species && d.species !== species) return false;
+    if (species && !(d.species || '').toLowerCase().startsWith(species.toLowerCase())) return false;
     if (adipose !== '') {
       const want = adipose === 'true';
       if (!!d.adipose !== want) return false;
@@ -236,6 +237,9 @@ const wireUI = () => {
   document.getElementById('modal-save').addEventListener('click', saveChangeSpeciesModal);
   document.getElementById('modal-overlay').addEventListener('click', (e) => {
     if (e.target.id === 'modal-overlay') closeChangeSpeciesModal();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && state.ui.modalOpen) closeChangeSpeciesModal();
   });
 };
 
