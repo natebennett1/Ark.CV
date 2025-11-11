@@ -17,7 +17,7 @@ import cv2
 import numpy as np
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Tuple, Deque
+from typing import Dict, Optional, List, Tuple, Deque
 from collections import deque
 
 from ..config.settings import ManualReviewConfig
@@ -37,24 +37,33 @@ class ManualReviewCollector:
     like bull trout).
     """
     
-    def __init__(self, config: ManualReviewConfig, location: str, date_str: str, 
-                 video_fps: float, frame_width: int, frame_height: int,
+    def __init__(self,
+                 config: ManualReviewConfig,
+                 location: str,
+                 ladder: str,
+                 date_str: str,
+                 time_str: str,
+                 video_fps: float,
+                 frame_width: int,
+                 frame_height: int,
                  upstream_direction: str = "right_to_left"):
         self.config = config
         self.location = location
+        self.ladder = ladder
         self.date_str = date_str
+        self.time_str = time_str
         self.video_fps = video_fps
         self.frame_width = frame_width
         self.frame_height = frame_height
         self.upstream_direction = upstream_direction
         
-        # Ensure output directory exists
         Path(self.config.output_dir).mkdir(parents=True, exist_ok=True)
+
         self.clips_dir = os.path.join(self.config.output_dir, "qa_clips")
         Path(self.clips_dir).mkdir(parents=True, exist_ok=True)
         
         # Initialize metadata CSV
-        self.metadata_csv = os.path.join(self.clips_dir, "qa_clips.csv")
+        self.metadata_csv = os.path.join(self.config.output_dir, "qa_clips.csv")
         self._initialize_csv()
         
         # Circular frame buffer for pre-event frames
@@ -93,19 +102,38 @@ class ManualReviewCollector:
         if not os.path.exists(self.metadata_csv):
             with open(self.metadata_csv, "w", newline="", encoding="utf-8") as f:
                 csv.writer(f).writerow([
-                    "timestamp", "location", "date", "video_name", 
-                    "event_types", "start_frame", "peak_frame", "end_frame",
-                    "start_time_sec", "peak_time_sec", "end_time_sec",
-                    "involved_tracks", "peak_score", "species", "confidence",
-                    "direction", "clip_path", "notes"
+                    "timestamp",
+                    "location",
+                    "ladder",
+                    "date",
+                    "time",
+                    "video_name",
+                    "event_types",
+                    "start_frame",
+                    "peak_frame",
+                    "end_frame",
+                    "start_time_sec",
+                    "peak_time_sec",
+                    "end_time_sec",
+                    "involved_tracks",
+                    "peak_score",
+                    "species",
+                    "confidence",
+                    "direction",
+                    "clip_path",
+                    "notes"
                 ])
     
     def set_center_line_position(self, center_line: int):
         """Set the center line position for event detection."""
         self.center_line_position = center_line
     
-    def process_frame(self, frame: np.ndarray, frame_idx: int, timestamp_sec: float, 
-                     video_name: str, detections: List[Tuple[int, Tuple[int, int, int, int]]]):
+    def process_frame(self,
+                      frame: np.ndarray,
+                      frame_idx: int,
+                      timestamp_sec: float,
+                      video_name: str,
+                      detections: List[Tuple[int, Tuple[int, int, int, int]]]):
         """
         Process a single frame for QA event detection and clip recording.
         
@@ -281,11 +309,12 @@ class ManualReviewCollector:
         """Save a completed QA clip to disk."""
         try:
             # Generate filename
-            timestamp_str = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            clip_source = clip_recorder.video_name.replace('.mp4', '').split('_clip_')[-1]
             event_types = "_".join(sorted(set(e.value for e in clip_recorder.get_event_types())))
-            track_ids_str = "_".join(str(t) for t in clip_recorder.get_all_track_ids())
-            filename = (f"qa_{event_types}_f{clip_recorder.peak_frame_idx:06d}_"
-                       f"tracks_{track_ids_str}_{timestamp_str}.mp4")
+            timestamp_sec = int(clip_recorder.peak_timestamp_sec)
+
+            filename = f"c{clip_source}_{event_types}_{timestamp_sec}s.mp4"
+            
             clip_path = os.path.join(self.clips_dir, filename)
             
             # Create video writer
@@ -327,14 +356,19 @@ class ManualReviewCollector:
                 
                 csv.writer(f).writerow([
                     datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                    self.location, self.date_str, clip_recorder.video_name,
+                    self.location,
+                    self.ladder,
+                    self.date_str,
+                    self.time_str,
+                    clip_recorder.video_name,
                     event_types_str,
-                    clip_recorder.start_frame_idx, clip_recorder.peak_frame_idx, 
+                    clip_recorder.start_frame_idx,
+                    clip_recorder.peak_frame_idx,
                     clip_recorder.end_frame_idx,
                     f"{clip_recorder.start_timestamp_sec:.3f}",
                     f"{clip_recorder.peak_timestamp_sec:.3f}",
                     f"{clip_recorder.end_timestamp_sec:.3f}",
-                    track_ids_str, 
+                    track_ids_str,
                     f"{clip_recorder.peak_proximity_score:.4f}",
                     event.species or "N/A",
                     f"{event.confidence:.4f}" if event.confidence is not None else "N/A",

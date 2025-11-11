@@ -5,6 +5,7 @@ This implementation accumulates species counts and writes them to DynamoDB
 at the end of processing.
 """
 
+import os
 import boto3
 from typing import Dict
 from datetime import datetime
@@ -47,7 +48,7 @@ class CloudOutputHandler(OutputHandler):
         self.species_counts[species][direction] += 1
         return True
     
-    def write_final_counts(self) -> bool:
+    def write_final_counts(self, qa_clips_s3_url: str = None) -> bool:
         """
         Atomically update aggregated counts in DynamoDB.
         """
@@ -78,6 +79,10 @@ class CloudOutputHandler(OutputHandler):
                 ':empty_map': {'M': {}},
                 ':zero': {'N': '0'},
             }
+
+            if qa_clips_s3_url:
+                set_clauses.append("qa_clips_s3_url = :qa_url")
+                expr_attr_values[':qa_url'] = {'S': qa_clips_s3_url}
 
             # Add SET increment expressions for each species
             for idx, (species, directions) in enumerate(self.species_counts.items()):
@@ -131,6 +136,49 @@ class CloudOutputHandler(OutputHandler):
 
         except Exception as e:
             print(f"✖ Error updating DynamoDB: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+    def upload_qa_clips_to_s3(self, clips_dir: str, s3_bucket: str, s3_prefix: str) -> str:
+        """
+        Upload all QA clips from local directory to S3.
+        
+        Args:
+            clips_dir: Local directory containing QA clips
+            s3_bucket: S3 bucket name
+            s3_prefix: S3 prefix (folder path) for the clips
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            s3_client = boto3.client('s3')
+            uploaded_count = 0
+            
+            # Upload all video files directly in clips_dir
+            for filename in os.listdir(clips_dir):
+                if filename.endswith('.mp4'):
+                    local_path = os.path.join(clips_dir, filename)
+                    
+                    s3_key = f"{s3_prefix}/{filename}"
+                    
+                    print(f"Uploading QA clip: {filename} -> s3://{s3_bucket}/{s3_key}")
+                    s3_client.upload_file(local_path, s3_bucket, s3_key)
+                    uploaded_count += 1
+            
+            if uploaded_count > 0:
+                print(f"Uploaded {uploaded_count} QA clip files to S3")
+                
+                # Return the S3 folder URL
+                s3_url = f"s3://{s3_bucket}/{s3_prefix}/"
+                return s3_url
+            else:
+                print("No QA clip files found to upload.")
+                return None
+            
+        except Exception as e:
+            print(f"✖ Error uploading QA clips to S3: {e}")
             import traceback
             traceback.print_exc()
             return False

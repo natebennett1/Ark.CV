@@ -128,24 +128,6 @@ class VideoProcessor:
             print(f"✖ Error writing frame: {e}")
             return False
     
-    def display_frame(self, frame: np.ndarray, window_name: str = "Fish Counter") -> bool:
-        """
-        Display a frame if display is enabled.
-        
-        Args:
-            frame: Frame to display
-            window_name: Window name for display
-            
-        Returns:
-            True if should continue, False if user requested quit
-        """
-        if not self.video_config.enable_display:
-            return True
-        
-        cv2.imshow(window_name, frame)
-        key = cv2.waitKey(1) & 0xFF
-        return key != ord('q')
-    
     def cleanup(self):
         """Clean up video resources."""
         if self.cap is not None:
@@ -155,9 +137,6 @@ class VideoProcessor:
         if self.video_writer is not None:
             self.video_writer.release()
             self.video_writer = None
-        
-        if self.video_config.enable_display:
-            cv2.destroyAllWindows()
         
         print("✔ Video resources cleaned up")
     

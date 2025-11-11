@@ -109,7 +109,7 @@ class LocalOutputHandler(OutputHandler):
             print(f"✖ Error writing CSV record: {e}")
             return False
     
-    def write_final_counts(self):
+    def write_final_counts(self, qa_clips_s3_url: str = None) -> bool:
         """No-op for local handler since counts are written immediately."""
         return True
 

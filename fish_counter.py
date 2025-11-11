@@ -14,7 +14,7 @@ from src.detection import FishDetector, AdiposeDetector
 from src.tracking import TrackingManager
 from src.classification import SpeciesClassifier
 from src.quality import ManualReviewCollector
-from src.io import VideoProcessor, OutputHandler, LocalOutputHandler
+from src.io import VideoProcessor, OutputHandler, LocalOutputHandler, CloudOutputHandler
 
 # Open CV uses BGR, not RGB
 COLOR_RED = (0, 0, 255)
@@ -28,27 +28,14 @@ class FishCountingPipeline:
     Main pipeline orchestrator that coordinates all components.
     """
     
-    def __init__(self, config: PipelineConfig):
+    def __init__(self, config: PipelineConfig, is_cloud: bool):
+        print("Initializing Fish Counting Pipeline...")
+
         self.config = config
         self.config.validate()
         
-        # Initialize components
-        self.detector = None
-        self.adipose_detector = None
-        self.tracking_manager = None
-        self.species_classifier = None
-        self.manual_review_collector = None
-        self.video_processor = None
-        self.output_handler = None
-        
-        # Processing statistics
-        self.start_time = None
-        self.frames_processed = 0
-        
-    def _initialize_components(self):
-        """Initialize all pipeline components."""
-        print("Initializing pipeline components...")
-        
+        self.is_cloud = is_cloud
+
         # Parse date
         input_date = datetime.strptime(self.config.io.date_str, "%Y-%m-%d").date()
         
@@ -72,9 +59,11 @@ class FishCountingPipeline:
         
         # Initialize I/O
         self.video_processor = VideoProcessor(self.config.io, self.config.video)
-        self.output_handler = LocalOutputHandler(self.config.io)
+        self.output_handler = CloudOutputHandler(self.config.io) if is_cloud else LocalOutputHandler(self.config.io)
         
-        print("✔ All components initialized")
+        # Processing statistics
+        self.start_time = None
+        self.frames_processed = 0
     
     def _draw_frame_annotations(self, frame, center_line, species_counts):
         """Draw center line and live counts on frame."""
@@ -147,8 +136,6 @@ class FishCountingPipeline:
         self.start_time = time.time()
         
         try:
-            self._initialize_components()
-            
             # Load models
             print("Loading models...")
             self.detector.load_model()
@@ -174,7 +161,9 @@ class FishCountingPipeline:
         self.manual_review_collector = ManualReviewCollector(
             config=self.config.hitl,
             location=self.config.io.location,
+            ladder=self.config.io.ladder,
             date_str=self.config.io.date_str,
+            time_str=self.config.io.time_str,
             video_fps=video_proc.fps,
             frame_width=video_proc.width,
             frame_height=video_proc.height,
@@ -226,23 +215,34 @@ class FishCountingPipeline:
             
             # Process frame for occlusion detection and clip recording
             self.manual_review_collector.process_frame(
-                frame, frame_number, timestamp_sec, 
+                frame,
+                frame_number,
+                timestamp_sec, 
                 os.path.basename(self.config.io.video_path),
                 frame_detections
             )
             
-            # Write frame and display
+            # Write frame to the annotated video output (only happens if running locally)
             video_proc.write_frame(frame)
-            if not video_proc.display_frame(frame):
-                print("User requested quit.")
-                break
         
-        # Write final fish counts
-        output.write_final_counts()
-
         # Finalize manual review collector to save any remaining peak occlusions
         self.manual_review_collector.finalize_processing()
+
+        # Upload QA clips to S3 if running in cloud mode
+        qa_clips_s3_url = None
         
+        if self.is_cloud:
+            s3_bucket = os.getenv('QA_CLIPS_S3_BUCKET')
+            if not s3_bucket:
+                raise ValueError("QA_CLIPS_S3_BUCKET environment variable must be set in cloud mode.")
+            s3_prefix = f"{self.config.io.location}/{self.config.io.ladder}/{self.config.io.date_str}/{self.config.io.time_str}"
+            clips_dir = self.manual_review_collector.clips_dir
+            if isinstance(output, CloudOutputHandler):
+                qa_clips_s3_url = output.upload_qa_clips_to_s3(clips_dir, s3_bucket, s3_prefix)
+        
+        # Write final fish counts
+        output.write_final_counts(qa_clips_s3_url=qa_clips_s3_url)
+
         # Return results
         elapsed_total = time.time() - self.start_time
         return {
@@ -323,8 +323,7 @@ class FishCountingPipeline:
             print(f"COUNTED: Track {track_id} ({stable_species}, {fish_state.length_inches:.1f}in) "
                   f"{direction} at {video_timestamp} - Crossing #{fish_state.crossing_count}")
 
-            # 🆕 REPORT CROSSING EVENT FOR QA CLIP COLLECTION
-            # This captures low-confidence, unknown species, and bull trout crossings
+            # Report crossing event. This captures low-confidence, unknown species, and bull trout crossings
             self.manual_review_collector.report_crossing_event(
                 track_id=track_id,
                 bbox=bbox,
@@ -353,30 +352,30 @@ class FishCountingPipeline:
 
 
 
-def main(config_file: str = None):
+def main():
     """Main entry point."""
     print("🐟 Fish Counting Pipeline v2.0 (Refactored)")
-    print("=" * 50)
-    
-    # Check if config file exists
-    if not config_file or not os.path.exists(config_file):
-        print(f"❌ Configuration file not found: {config_file or 'None provided'}")
-        print("\nUsage: python fish_counter.py <config_file>")
-        print("\nExample: python fish_counter.py configs/local.json")
-        print("\nAvailable config files:")
-        if os.path.exists("configs"):
-            for file in os.listdir("configs"):
-                if file.endswith(".json"):
-                    print(f"  - configs/{file}")
-        return 1
     
     try:
-        # Load configuration from file
-        print(f"Loading configuration from: {config_file}")
-        config = ConfigLoader.load_config_from_file(config_file)
+        sqs_message = os.getenv('SQS_MESSAGE')
+        model_s3_bucket = os.getenv('MODEL_S3_BUCKET')
+        model_s3_key = os.getenv('MODEL_S3_KEY')
+
+        is_cloud = sqs_message is not None
+
+        if is_cloud:
+            print("Running in cloud mode. Loading configuration from SQS message.")
+
+            if not model_s3_bucket or not model_s3_key:
+                raise ValueError("MODEL_S3_BUCKET and MODEL_S3_KEY environment variables must be set in cloud mode.")
+
+            config = ConfigLoader.load_config_from_sqs_message(sqs_message, model_s3_bucket, model_s3_key)
+        else:
+            print("Running in local mode. Loading configuration from: configs/local.json.")
+            config = ConfigLoader.load_config_from_file("configs/alex.json")
 
         # Create and run pipeline
-        pipeline = FishCountingPipeline(config)
+        pipeline = FishCountingPipeline(config, is_cloud)
         results = pipeline.run()
         
         print("\n🎉 Pipeline completed successfully!")
@@ -392,20 +391,4 @@ def main(config_file: str = None):
 
 
 if __name__ == "__main__":
-    # Check for config file argument
-    config_file = None
-
-    if len(sys.argv) > 1:
-        config_file = sys.argv[1]
-    else:
-        # Look for a default config file
-        default_configs = [
-            "configs/local.json"
-        ]
-        
-        for default_config in default_configs:
-            if os.path.exists(default_config):
-                config_file = default_config
-                break
-    
-    sys.exit(main(config_file))
+    sys.exit(main())

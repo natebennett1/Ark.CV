@@ -56,7 +56,7 @@ class OutputHandler(ABC):
         pass
     
     @abstractmethod
-    def write_final_counts(self) -> bool:
+    def write_final_counts(self, qa_clips_s3_url: str = None) -> bool:
         """
         Write final aggregated counts to the output destination.
         

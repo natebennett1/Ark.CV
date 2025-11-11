@@ -6,9 +6,10 @@ making it easy to modify behavior without changing core logic.
 """
 
 import os
+import tempfile
 from datetime import datetime
 from dataclasses import dataclass, field
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 
 @dataclass
@@ -75,7 +76,7 @@ class CountingConfig:
 @dataclass
 class ManualReviewConfig:
     """Configuration for Manual Review data collection - Occlusion video clips."""
-    output_dir: str = "./manual_review"
+    output_dir: str = ""
     
     # Video clip settings
     clip_pre_event_sec: float = 1.0  # Seconds before occlusion peak to include
@@ -91,7 +92,6 @@ class ManualReviewConfig:
 @dataclass
 class VideoConfig:
     """Configuration for video processing."""
-    enable_display: bool = False
     save_output_video: bool = True
     output_video_codec: str = "mp4v"
 
@@ -131,8 +131,13 @@ class PipelineConfig:
     
     def __post_init__(self):
         """Auto-generate output paths if not provided."""
+        is_cloud = os.getenv('SQS_MESSAGE') is not None
+
+        # Use temp directory for cloud, current directory for local
+        base_dir = tempfile.gettempdir() if is_cloud else "."
+        
         # Create timestamped output directory
-        output_dir = f"output_{self._file_timestamp}"
+        output_dir = os.path.join(base_dir, f"output_{self._file_timestamp}")
         os.makedirs(output_dir, exist_ok=True)
         
         if not self.io.csv_output_path:
@@ -141,12 +146,8 @@ class PipelineConfig:
         if not self.io.video_output_path:
             self.io.video_output_path = os.path.join(output_dir, f"annotated_video_{self._file_timestamp}.mp4")
         
-        # Update Manual Review output directory to be inside the timestamped folder
-        if self.hitl.output_dir == "./manual_review":
+        if not self.hitl.output_dir:
             self.hitl.output_dir = os.path.join(output_dir, "manual_review")
-            
-        if not self.io.date_str:
-            self.io.date_str = datetime.now().strftime("%Y-%m-%d")
     
     def validate(self) -> None:
         """Validate configuration settings."""

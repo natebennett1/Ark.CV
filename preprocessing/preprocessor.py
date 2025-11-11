@@ -6,6 +6,7 @@ Optimized for cost savings by filtering out empty footage before expensive GPU p
 import os
 import sys
 import json
+import tempfile
 import cv2
 import boto3
 import subprocess
@@ -477,7 +478,7 @@ def main():
         preprocessor = VideoPreprocessor()
         
         # Download video
-        video_local_path = '/tmp/input_video.mp4'
+        video_local_path = os.path.join(tempfile.gettempdir(), 'input_video.mp4')
         if not preprocessor.download_video_from_s3(video_s3_bucket, video_s3_key, video_local_path):
             return 1
         
@@ -489,7 +490,7 @@ def main():
             return 0
         
         # Extract clips
-        output_dir = '/tmp/clips'
+        output_dir = os.path.join(tempfile.gettempdir(), 'clips')
         video_name = video_filename.replace('.mp4', '')
         clips = preprocessor.extract_video_clips(video_local_path, segments, output_dir, video_name)
         
