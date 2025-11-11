@@ -5,7 +5,7 @@ This module handles the high-level tracking logic including direction detection,
 center line crossing, and count debouncing.
 """
 
-from typing import Optional, Tuple, Dict, Set, TYPE_CHECKING
+from typing import Optional, Tuple, Set
 
 from ..config.settings import CountingConfig
 from .fish_state import FishStateManager, FishState
@@ -25,12 +25,10 @@ class TrackingManager:
         self.config = counting_config
         self.state_manager = FishStateManager(counting_config)
         self.center_line: Optional[int] = None
-        self.frame_width: Optional[int] = None
         self.upstream_direction = self.config.upstream_direction
     
     def initialize_frame_info(self, frame_width: int):
         """Initialize frame dimensions and center line position."""
-        self.frame_width = frame_width
         self.center_line = int(frame_width * self.config.center_line_position)
     
     def determine_direction(self, fish_state: FishState, curr_x: int) -> Optional[str]:
@@ -44,7 +42,7 @@ class TrackingManager:
         Returns:
             "Downstream", "Upstream", or None if no crossing detected
         """
-        if self.center_line is None or self.frame_width is None:
+        if self.center_line is None:
             return None
         
         # Determine current side
@@ -141,10 +139,6 @@ class TrackingManager:
     def cleanup_inactive_tracks(self, active_track_ids: Set[int]):
         """Clean up tracking state for inactive tracks."""
         self.state_manager.cleanup_inactive_tracks(active_track_ids)
-    
-    def get_fish_state(self, track_id: int) -> Optional[FishState]:
-        """Get fish state for a specific track ID."""
-        return self.state_manager.get_state(track_id)
     
     def get_trail_points(self, track_id: int) -> list:
         """Get trail points for visualization."""

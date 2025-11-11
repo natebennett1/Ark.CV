@@ -1,0 +1,170 @@
+.app-shell {
+  min-height: 100vh;
+  padding: 2.5rem 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.top-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(6, 24, 44, 0.08);
+}
+
+.top-bar h1 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.card {
+  background: #fff;
+  border-radius: 16px;
+  padding: 1.75rem;
+  box-shadow: 0 25px 45px rgba(15, 23, 42, 0.07);
+}
+
+.dam-list {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.dam-list__item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  border: 1px solid rgba(6, 24, 44, 0.08);
+  border-radius: 12px;
+}
+
+.dam-list__item span {
+  display: block;
+  color: #637083;
+}
+
+.link-button {
+  text-decoration: none;
+  color: #0f62fe;
+  font-weight: 600;
+}
+
+.link-button.ghost {
+  color: #111;
+}
+
+.roles-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.role-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.9rem;
+  border-radius: 999px;
+  background: rgba(15, 98, 254, 0.15);
+  color: #0b3d91;
+  font-size: 0.85rem;
+  text-transform: capitalize;
+}
+
+.role-chip.muted {
+  background: rgba(11, 21, 35, 0.08);
+  color: #4b5563;
+}
+
+.queue-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+}
+
+.queue-table th,
+.queue-table td {
+  padding: 0.75rem 0.5rem;
+  border-bottom: 1px solid rgba(6, 24, 44, 0.08);
+  text-align: left;
+}
+
+.primary-button,
+.ghost-button {
+  border-radius: 999px;
+  border: none;
+  padding: 0.65rem 1.5rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.primary-button {
+  background: #0f62fe;
+  color: #fff;
+}
+
+.ghost-button {
+  background: transparent;
+  color: #0f62fe;
+}
+
+.user-menu {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background: rgba(15, 98, 254, 0.08);
+  border-radius: 999px;
+}
+
+.user-name {
+  font-weight: 600;
+  display: block;
+}
+
+.user-email {
+  font-size: 0.85rem;
+  color: #3d4a5c;
+}
+
+.auth-panel {
+  max-width: 420px;
+  margin: 5rem auto;
+  padding: 2rem;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 25px 45px rgba(15, 23, 42, 0.12);
+  text-align: center;
+}
+
+.auth-panel.error {
+  border: 1px solid #ff5c5c;
+}
+
+.token-debugger {
+  margin-top: 1.5rem;
+}
+
+.token-preview {
+  margin-top: 0.75rem;
+  font-size: 0.9rem;
+  color: #0f172a;
+}
+
+.token-error {
+  margin-top: 0.75rem;
+  color: #b00020;
+}
+
+.muted {
+  color: #6b7280;
+  font-size: 0.9rem;
+}

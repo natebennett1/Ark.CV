@@ -20,8 +20,7 @@ and exports both an annotated video and CSV-based analytics.
 ## Repository Structure
 ```
 configs/
-├── wells_dam_test.json             # Default pipeline configuration
-└── template.json                   # Example template for overriding configurations
+└── local.json                      # Configurations used if running locally
 
 src/
 ├── classification/                 # Species classification with business rules
@@ -72,7 +71,7 @@ fish_counter.py                     # Pipeline entry point and main orchestrator
     ```
 
 2. **Configure Your Pipeline**:
-  - Use the provided config file: `configs/wells_dam_test.json`
+  - Use the provided config file: `configs/local.json`
   - Or create your own config file based on the template
   - In either case, make sure to update paths for your model weights and input video, and also the location and date string:
     ```json
@@ -89,7 +88,7 @@ fish_counter.py                     # Pipeline entry point and main orchestrator
     ```
 
 3. **Run the Pipeline**:
-  - By default, the `configs/wells_dam_test.json` will be used.
+  - By default, the `configs/local.json` will be used.
     ```bash
     python fish_counter.py
     ```

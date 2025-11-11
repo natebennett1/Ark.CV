@@ -109,12 +109,6 @@ class IOConfig:
     # Metadata
     location: str = ""
     date_str: str = ""  # YYYY-MM-DD format
-    
-    # Cloud storage (for future AWS deployment)
-    s3_input_bucket: Optional[str] = None
-    s3_output_bucket: Optional[str] = None
-    s3_input_key: Optional[str] = None
-    use_cloud_storage: bool = False
 
 
 @dataclass 
@@ -164,7 +158,7 @@ class PipelineConfig:
             
         if not self.io.video_path:
             errors.append("Video path is required")
-        elif not self.io.use_cloud_storage and not os.path.isfile(self.io.video_path):
+        elif not os.path.isfile(self.io.video_path):
             errors.append(f"Video file not found: {self.io.video_path}")
         
         # Validate date format
@@ -199,36 +193,3 @@ class PipelineConfig:
             'video': self.video.__dict__,
             'io': self.io.__dict__
         }
-
-
-def create_default_config() -> PipelineConfig:
-    """Create a default configuration with sensible defaults."""
-    return PipelineConfig()
-
-
-def load_config_from_env() -> PipelineConfig:
-    """Load configuration from environment variables."""
-    config = create_default_config()
-    
-    # Model configuration
-    if model_path := os.getenv('FISH_MODEL_PATH'):
-        config.model.model_path = model_path
-    if adipose_path := os.getenv('FISH_ADIPOSE_MODEL_PATH'):
-        config.model.adipose_model_path = adipose_path
-    
-    # I/O configuration
-    if video_path := os.getenv('FISH_VIDEO_PATH'):
-        config.io.video_path = video_path
-    if location := os.getenv('FISH_LOCATION'):
-        config.io.location = location
-    if date_str := os.getenv('FISH_DATE'):
-        config.io.date_str = date_str
-    
-    # Cloud configuration
-    if s3_input := os.getenv('FISH_S3_INPUT_BUCKET'):
-        config.io.s3_input_bucket = s3_input
-        config.io.use_cloud_storage = True
-    if s3_output := os.getenv('FISH_S3_OUTPUT_BUCKET'):
-        config.io.s3_output_bucket = s3_output
-    
-    return config

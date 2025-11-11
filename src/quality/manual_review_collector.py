@@ -363,12 +363,3 @@ class ManualReviewCollector:
               f"{self.stats['unknown_species_detected']} unknown, "
               f"{self.stats['bull_trout_detected']} bull trout")
         print(f"  Merged: {self.stats['events_merged']}, Skipped: {self.stats['events_skipped']}")
-    
-    def get_stats(self) -> Dict[str, Any]:
-        """Get statistics about manual review collection."""
-        return {
-            **self.stats,
-            "active_clips": len(self.active_clips),
-            "output_directory": self.clips_dir,
-            "metadata_csv": self.metadata_csv
-        }
