@@ -14,15 +14,19 @@
       <a href="#review" class="nav-link">Review Detections</a>
     </nav>
     <div class="top-actions">
-      <a class="assist-button" href="mailto:nate@arkcv.com" title="Request assistance">
-        Request Assistance
-      </a>
       <div class="profile" id="profile">
         <button class="avatar" id="avatarButton" aria-haspopup="menu" aria-expanded="false" title="Account">
-          <!-- Simple user icon -->
+          <!-- Avatar icon -->
           <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-            <circle cx="12" cy="8" r="4" fill="currentColor" opacity="0.9"/>
-            <path d="M4 20c0-4 4-6 8-6s8 2 8 6" fill="currentColor" opacity="0.6"/>
+            <defs>
+              <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
+                <stop offset="0%" stop-color="#38bdf8"/>
+                <stop offset="100%" stop-color="#0ea5e9"/>
+              </linearGradient>
+            </defs>
+            <circle cx="12" cy="12" r="11" fill="url(#g)" opacity="0.35" />
+            <circle cx="12" cy="8.5" r="3.5" fill="currentColor" />
+            <path d="M6 20c1.5-3.5 4-5 6-5s4.5 1.5 6 5" fill="currentColor" opacity="0.85"/>
           </svg>
         </button>
         <div class="menu" id="profileMenu" role="menu" aria-labelledby="avatarButton">
@@ -33,35 +37,31 @@
   </header>
 
   <main>
-    <section class="card" id="filters">
-      <header class="card-header">
+    <section class="card filters-card" id="filters">
+      <header class="filters-header">
         <h2>Filters</h2>
-        <p>Select criteria to refine dashboard and review.</p>
-      </header>
-      <div class="filters-grid">
-        <label class="filter-field">
-          <span>Species</span>
-          <select id="filter-species">
-            <option value="">All species</option>
+        <div class="filters-bar">
+          <select id="filter-species" class="filter-select" title="Species">
+            <option value="">Species</option>
+            <option>Chinook</option>
+            <option>Coho</option>
+            <option>Lamprey</option>
+            <option>Sockeye</option>
+            <option>Steelhead</option>
+            <option>Bull Trout</option>
           </select>
-        </label>
-        <label class="filter-field">
-          <span>Adipose Presence</span>
-          <select id="filter-adipose">
-            <option value="">Any</option>
+          <select id="filter-adipose" class="filter-select" title="Adipose">
+            <option value="">Adipose</option>
             <option value="true">Adipose present</option>
             <option value="false">No adipose</option>
           </select>
-        </label>
-        <label class="filter-field">
-          <span>Time Frame</span>
-          <select id="filter-timeframe">
-            <option value="7d">Last 7 days</option>
-            <option value="30d">Last 30 days</option>
+          <select id="filter-timeframe" class="filter-select" title="Time frame">
+            <option value="7d">7 days</option>
+            <option value="30d">30 days</option>
             <option value="ytd">Year to date</option>
           </select>
-        </label>
-      </div>
+        </div>
+      </header>
     </section>
     <section id="overview" class="card-grid">
       <article class="stat-card">
@@ -106,10 +106,15 @@
         <h3 id="modal-title">Change Species</h3>
       </header>
       <div class="modal-body">
-        <label class="filter-field" style="width:100%">
-          <span>Species name</span>
-          <input id="modal-species-input" type="text" class="input" placeholder="Enter species" />
-        </label>
+        <select id="modal-species-select" class="filter-select" style="width:100%">
+          <option value="">Select species</option>
+          <option>Chinook</option>
+          <option>Coho</option>
+          <option>Lamprey</option>
+          <option>Sockeye</option>
+          <option>Steelhead</option>
+          <option>Bull Trout</option>
+        </select>
       </div>
       <footer class="modal-footer">
         <button id="modal-cancel" class="button">Cancel</button>
@@ -146,6 +151,9 @@
   </template>
 
   <footer class="footer">
+    <div class="assist-footer">
+      <a class="assist-footer-link" href="mailto:nate@arkcv.com" title="Request assistance">Request Assistance</a>
+    </div>
     <p>Ark.CV Demo Interface &bull; Built for model review workflows</p>
   </footer>
 

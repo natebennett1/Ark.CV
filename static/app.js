@@ -50,6 +50,10 @@ const state = {
   ui: { menuOpen: false, modalOpen: false, currentChangeId: null },
 };
 
+const SPECIES_OPTIONS = [
+  'Chinook', 'Coho', 'Lamprey', 'Sockeye', 'Steelhead', 'Bull Trout'
+];
+
 const formatNumber = (value) =>
   new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(value);
 
@@ -98,13 +102,15 @@ const handleAccept = (id) => {
   renderDetections();
 };
 
-// Modal-based change species
+// Modal-based change species (using dropdown)
 const openChangeSpeciesModal = (id) => {
   state.ui.currentChangeId = id;
   const detection = state.detections.find((d) => d.id === id);
   if (!detection) return;
-  const input = document.getElementById('modal-species-input');
-  input.value = detection.species;
+  const select = document.getElementById('modal-species-select');
+  // Try to preselect based on the leading word (e.g., "Chinook Salmon" -> "Chinook")
+  const lead = (detection.species || '').split(' ')[0];
+  select.value = SPECIES_OPTIONS.includes(lead) ? lead : '';
   document.getElementById('modal-overlay').classList.add('show');
   state.ui.modalOpen = true;
 };
@@ -119,7 +125,7 @@ const saveChangeSpeciesModal = () => {
   const id = state.ui.currentChangeId;
   const detection = state.detections.find((d) => d.id === id);
   if (!detection) return;
-  const value = document.getElementById('modal-species-input').value.trim();
+  const value = document.getElementById('modal-species-select').value.trim();
   if (value) {
     detection.species = value;
     detection.confidence = 1;
@@ -194,13 +200,8 @@ const renderDetections = () => {
 
 const renderFilters = () => {
   const select = document.getElementById('filter-species');
-  const speciesSet = new Set(state.detections.map((d) => d.species));
-  // Clear all but the first option
-  while (select.options.length > 1) select.remove(1);
-  [...speciesSet].sort().forEach((s) => {
-    const opt = document.createElement('option');
-    opt.value = s; opt.textContent = s; select.appendChild(opt);
-  });
+  // Ensure fixed species list (already present in HTML). Nothing dynamic needed.
+  // No-op placeholder for parity with init flow.
 };
 
 const wireUI = () => {
