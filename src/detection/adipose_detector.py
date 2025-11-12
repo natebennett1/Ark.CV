@@ -32,6 +32,18 @@ class AdiposeDetector:
         if self.model_config.device == "auto":
             return "cuda" if torch.cuda.is_available() else "cpu"
         return self.model_config.device
+
+    def _patch_torch_load(self):
+        """Apply compatibility patch for torch.load."""
+        original_load = torch.load
+        
+        def patched_load(*args, **kwargs):
+            if 'weights_only' not in kwargs:
+                kwargs['weights_only'] = False
+            return original_load(*args, **kwargs)
+        
+        torch.load = patched_load
+        return original_load
         
     def load_model(self) -> bool:
         """
@@ -46,7 +58,11 @@ class AdiposeDetector:
 
         print(f"Attempting to load model from: {self.model_config.adipose_model_path}")
 
+        # Apply torch.load patch for compatibility
+        original_load = self._patch_torch_load()
+
         try:
+            original_load = self._patch_torch_load()
             self.model = YOLO(self.model_config.adipose_model_path).to(self.device)
             self.model.model.eval()
             print(f"✔ Adipose model loaded successfully on device: {self.device}")
@@ -55,6 +71,9 @@ class AdiposeDetector:
             print(f"✖ Failed to load model: {e}")
             traceback.print_exc()
             raise
+        finally:
+            # Restore original torch.load
+            torch.load = original_load
     
     def _expand_box(self, x1: int, y1: int, x2: int, y2: int, 
                    frame_width: int, frame_height: int, ratio: float = 0.20) -> Tuple[int, int, int, int]:

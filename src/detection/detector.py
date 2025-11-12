@@ -68,12 +68,27 @@ class FishDetector:
             
         return temp_file
     
+    def _patch_torch_load(self):
+        """Apply compatibility patch for torch.load."""
+        original_load = torch.load
+        
+        def patched_load(*args, **kwargs):
+            if 'weights_only' not in kwargs:
+                kwargs['weights_only'] = False
+            return original_load(*args, **kwargs)
+        
+        torch.load = patched_load
+        return original_load
+    
     def load_model(self) -> None:
         """Load the YOLO model with error handling."""
         if not self.model_config.model_path:
             raise ValueError("Model path not configured")
         
         print(f"Attempting to load model from: {self.model_config.model_path}")
+
+        # Apply torch.load patch for compatibility
+        original_load = self._patch_torch_load()
         
         try:
             self.model = YOLO(self.model_config.model_path).to(self.device)
@@ -83,6 +98,9 @@ class FishDetector:
             print(f"✖ Failed to load model: {e}")
             traceback.print_exc()
             raise
+        finally:
+            # Restore original torch.load
+            torch.load = original_load
         
         # Configure inference settings
         self.model.overrides["conf"] = self.model_config.confidence_threshold
