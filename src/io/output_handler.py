@@ -6,8 +6,11 @@ allowing the pipeline to work with different output destinations (local files,
 cloud databases, etc.) without changing the core logic.
 """
 
+import logging
 from abc import ABC, abstractmethod
-from typing import Dict, Any
+from typing import Dict
+
+logger = logging.getLogger(__name__)
 
 
 class OutputHandler(ABC):
@@ -125,11 +128,11 @@ class OutputHandler(ABC):
         total_upstream = sum(c["Upstream"] for c in counts.values())
         total_downstream = sum(c["Downstream"] for c in counts.values())
         
-        print(f"Printing final counts.")
+        logger.info("Printing final counts.")
         for species, dirs in sorted(counts.items()):
-            print(f"{species}: Up={dirs['Upstream']} Down={dirs['Downstream']}")
-        print(f"{'TOTAL'}: Up={total_upstream} Down={total_downstream}")
-    
+            logger.info("%s: Up=%d Down=%d", species, dirs['Upstream'], dirs['Downstream'])
+        logger.info("TOTAL: Up=%d Down=%d", total_upstream, total_downstream)
+
     def __enter__(self):
         """Context manager entry."""
         if not self.initialize():

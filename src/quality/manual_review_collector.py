@@ -12,6 +12,7 @@ Supported event types:
 """
 
 import os
+import logging
 import csv
 import cv2
 import numpy as np
@@ -24,6 +25,8 @@ from ..config.settings import ManualReviewConfig
 from .quality_event import QualityEvent, EventType, EventPriority
 from .clip_recorder import ClipRecorder
 from .occlusion_detector import OcclusionDetector
+
+logger = logging.getLogger(__name__)
 
 
 class ManualReviewCollector:
@@ -237,7 +240,7 @@ class ManualReviewCollector:
             # Update existing clip (merge event)
             self.active_clips[event_key].merge_event(event)
             self.stats["events_merged"] += 1
-            print(f"🔄 Merged {event.event_type.value} into existing clip {event_key}")
+            logger.info("Merged %s into existing clip %s", event.event_type.value, event_key)
             return
         
         # Check for overlaps with other active clips
@@ -247,12 +250,11 @@ class ManualReviewCollector:
                 # Merge into the overlapping clip
                 overlapping_clip.merge_event(event)
                 self.stats["events_merged"] += 1
-                print(f"🔄 Merged {event.event_type.value} into overlapping clip")
+                logger.info("Merged %s into overlapping clip", event.event_type.value)
                 return
         
         # Bull trout and other critical events always get their own clip
-        print(f"🔍 QA Event detected: {event.event_type.value} - Track {event_key} "
-              f"(score: {event.proximity_score:.3f})")
+        logger.info("QA Event detected: %s - Track %s (score: %.3f)", event.event_type.value, event_key, event.proximity_score)
         
         # Deep copy buffered frames now (only when actually creating a clip)
         # This avoids copying frames on every single frame processed
@@ -332,7 +334,7 @@ class ManualReviewCollector:
                                           (self.frame_width, self.frame_height))
             
             if not video_writer.isOpened():
-                print(f"✖ Failed to create video writer for {clip_path}")
+                logger.error("Failed to create video writer for %s", clip_path)
                 return
             
             # Write all frames with annotations
@@ -349,11 +351,11 @@ class ManualReviewCollector:
             
             self.stats["clips_saved"] += 1
             duration = clip_recorder.end_timestamp_sec - clip_recorder.start_timestamp_sec
-            print(f"💾 Saved QA clip: {filename} ({duration:.1f}s, "
-                  f"types: {event_types}, score: {clip_recorder.peak_proximity_score:.3f})")
-            
+            logger.info("Saved QA clip: %s (%d seconds, types: %s, score: %.3f)",
+                        filename, duration, event_types, clip_recorder.peak_proximity_score)
+
         except Exception as e:
-            print(f"✖ Error saving QA clip: {e}")
+            logger.exception("Error saving QA clip: %s", e)
     
     def _write_clip_metadata(self, clip_recorder: ClipRecorder, clip_path: str):
         """Write clip metadata to CSV."""
@@ -386,24 +388,24 @@ class ManualReviewCollector:
                     event.notes
                 ])
         except Exception as e:
-            print(f"✖ Error writing clip metadata: {e}")
+            logger.exception("Error writing clip metadata: %s", e)
     
     def finalize_processing(self):
         """Finalize processing and save any remaining active clips."""
-        print(f"Finalizing manual review collector...")
+        logger.info("Finalizing manual review collector.")
         
         # Save all remaining active clips
         for event_key, clip_recorder in self.active_clips.items():
             if len(clip_recorder.frames) > 0:
-                print(f"Saving remaining clip: {event_key}")
+                logger.info("Saving remaining clip: %s", event_key)
                 self._save_clip(clip_recorder)
                 
         self.active_clips.clear()
-        
-        print(f"✔ Manual review finalized: {self.stats['clips_saved']} clips saved")
-        print(f"  Events: {self.stats['occlusions_detected']} occlusions, "
-              f"{self.stats['low_conf_detected']} low-conf, "
-              f"{self.stats['unknown_species_detected']} unknown, "
-              f"{self.stats['unknown_adipose_detected']} unknown adipose, "
-              f"{self.stats['bull_trout_detected']} bull trout")
-        print(f"  Merged: {self.stats['events_merged']}, Skipped: {self.stats['events_skipped']}")
+
+        logger.info("Manual review finalized: %d clips saved", self.stats['clips_saved'])
+        logger.info("Events: %d occlusions, %d low-conf, %d unknown, %d unknown adipose, %d bull trout",
+                    self.stats['occlusions_detected'], self.stats['low_conf_detected'],
+                    self.stats['unknown_species_detected'], self.stats['unknown_adipose_detected'],
+                    self.stats['bull_trout_detected'])
+        logger.info("Merged: %d, Skipped: %d",
+                    self.stats['events_merged'], self.stats['events_skipped'])

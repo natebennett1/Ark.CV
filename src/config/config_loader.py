@@ -3,10 +3,13 @@ Configuration loader for the fish counting pipeline.
 """
 
 import os
+import logging
 import json
 import tempfile
 import boto3
 from . import PipelineConfig
+
+logger = logging.getLogger(__name__)
 
 
 class ConfigLoader:
@@ -45,7 +48,7 @@ class ConfigLoader:
         {
             "video_s3_bucket": "bucket-name",
             "video_s3_key": "path/to/video.mp4",
-            "location": "Wells Dam",
+            "location": "wells",
             "ladder": "east",
             "date_str": "2025-08-31",
             "time_str": "0800"
@@ -113,15 +116,16 @@ class ConfigLoader:
         filename = os.path.basename(key)
         local_path = os.path.join(tempfile.gettempdir(), filename)
         
-        print("Downloading s3://%s/%s to %s...", bucket, key, local_path)
+        logger.info("Downloading s3://%s/%s to %s...", bucket, key, local_path)
         
         try:
             s3_client.download_file(bucket, key, local_path)
             
             file_size_mb = os.path.getsize(local_path) / (1024 * 1024)
-            print("Downloaded %.2f MB", file_size_mb)
+            logger.info("Downloaded %.2f MB", file_size_mb)
             
             return local_path
             
         except Exception as e:
-            raise RuntimeError(f"Failed to download from S3: {e}")
+            logger.exception("Failed to download from S3: s3://%s/%s", bucket, key)
+            raise

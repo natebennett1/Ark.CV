@@ -24,7 +24,7 @@ class SpeciesRules:
 
     # Valid species for each location
     SPECIES_BY_LOCATION: Dict[str, List[str]] = {
-        "Wells Dam": [
+        "wells": [
             "Chinook",
             "Coho",
             "Sockeye",
@@ -40,7 +40,7 @@ class SpeciesRules:
 
     # Seasonal date ranges by location and species
     SEASONAL_RANGES: Dict[str, Dict[str, List[Tuple[int, int, int, int]]]] = {
-        "Wells Dam": {
+        "wells": {
             "chinook_spring": [(5, 1, 6, 28)],      # May 1 - June 28
             "chinook_summer": [(6, 29, 8, 28)],     # June 29 - Aug 28
             "chinook_fall": [(8, 29, 11, 15)],      # Aug 29 - Nov 15
@@ -147,7 +147,7 @@ class SpeciesRules:
             return False
         
         if species == "Coho":
-            if location == "Wells Dam":
+            if location == "wells":
                 return SpeciesRules.is_coho_allowed_wells_dam(check_date)
             # Default Coho season
             return date(check_date.year, 8, 1) <= check_date <= date(check_date.year, 11, 30)

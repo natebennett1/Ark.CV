@@ -5,12 +5,12 @@ Optimized for cost savings by filtering out empty footage before expensive GPU p
 
 import os
 import sys
+import logging
 import json
 import tempfile
 import cv2
 import boto3
 import subprocess
-import logging
 import shutil
 from typing import List, Dict, Tuple
 from dataclasses import dataclass
@@ -83,7 +83,7 @@ class VideoPreprocessor:
             return True
             
         except Exception as e:
-            logger.error("Failed to download video: %s", e)
+            logger.exception("Failed to download video: %s", e)
             return False
     
     def detect_fish_segments(self, video_path: str) -> List[VideoSegment]:
@@ -349,7 +349,7 @@ class VideoPreprocessor:
             return result.returncode == 0
             
         except Exception as e:
-            logger.error("ffmpeg error: %s", e)
+            logger.exception("ffmpeg error: %s", e)
             return False
     
     def upload_clips_to_s3(self, 
@@ -380,7 +380,7 @@ class VideoPreprocessor:
                 os.remove(local_path)
                 
             except Exception as e:
-                logger.error("Upload failed: %s", e)
+                logger.exception("Upload failed: %s", e)
 
         return clips
     
@@ -414,7 +414,7 @@ class VideoPreprocessor:
                 logger.info("Sent clip %d: %s...", clip['clip_index'], response['MessageId'][:8])
                 
             except Exception as e:
-                logger.error("Failed to send message for clip %d: %s", clip['clip_index'], e)
+                logger.exception("Failed to send message for clip %d: %s", clip['clip_index'], e)
 
 
 def parse_filename(filename: str) -> Tuple[str, str, str, str]:
@@ -526,7 +526,7 @@ def main():
             shutil.rmtree(output_dir)
 
 
-# This version of main() is for local testing only
+# # This version of main() is for local testing only
 # def main():
 #     """Main preprocessing job entry point - uses local files."""
 #     logger.info("Begin Fish Video Preprocessing Job")

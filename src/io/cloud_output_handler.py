@@ -6,6 +6,7 @@ at the end of processing.
 """
 
 import os
+import logging
 import boto3
 from typing import Dict
 from datetime import datetime
@@ -13,6 +14,8 @@ from collections import defaultdict
 
 from ..config.settings import IOConfig
 from .output_handler import OutputHandler
+
+logger = logging.getLogger(__name__)
 
 
 class CloudOutputHandler(OutputHandler):
@@ -33,7 +36,7 @@ class CloudOutputHandler(OutputHandler):
     
     def initialize(self) -> bool:
         """Initialize (nothing needed for cloud)."""
-        print(f"✔ Cloud output handler initialized for {self.location}/{self.ladder} on {self.date_str}_{self.time_str}")
+        logger.info("Cloud output handler initialized for %s/%s on %s_%s", self.location, self.ladder, self.date_str, self.time_str)
         return True
     
     def record_count(self, species: str, direction: str,
@@ -54,7 +57,7 @@ class CloudOutputHandler(OutputHandler):
         """
         try:
             pk = f"{self.location}#{self.ladder}#{self.date_str}#{self.time_str}"
-            print(f"Updating DynamoDB atomically with PK={pk}")
+            logger.info("Updating DynamoDB atomically with PK=%s", pk)
 
             client = boto3.client('dynamodb')
             timestamp = datetime.now().isoformat()
@@ -131,13 +134,11 @@ class CloudOutputHandler(OutputHandler):
                 ExpressionAttributeValues=expr_attr_values
             )
 
-            print("✔ DynamoDB counts updated successfully (atomic, single call, using + increments)")
+            logger.info("DynamoDB counts updated successfully.")
             return True
 
         except Exception as e:
-            print(f"✖ Error updating DynamoDB: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("Error updating DynamoDB: %s", e)
             return False
 
     def upload_qa_clips_to_s3(self, clips_dir: str, s3_bucket: str, s3_prefix: str) -> str:
@@ -162,25 +163,23 @@ class CloudOutputHandler(OutputHandler):
                     local_path = os.path.join(clips_dir, filename)
                     
                     s3_key = f"{s3_prefix}/{filename}"
-                    
-                    print(f"Uploading QA clip: {filename} -> s3://{s3_bucket}/{s3_key}")
+
+                    logger.info("Uploading QA clip: %s -> s3://%s/%s", filename, s3_bucket, s3_key)
                     s3_client.upload_file(local_path, s3_bucket, s3_key)
                     uploaded_count += 1
             
             if uploaded_count > 0:
-                print(f"Uploaded {uploaded_count} QA clip files to S3")
+                logger.info("Uploaded %d QA clip files to S3", uploaded_count)
                 
                 # Return the S3 folder URL
                 s3_url = f"s3://{s3_bucket}/{s3_prefix}/"
                 return s3_url
             else:
-                print("No QA clip files found to upload.")
+                logger.info("No QA clip files found to upload.")
                 return None
             
         except Exception as e:
-            print(f"✖ Error uploading QA clips to S3: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("Error uploading QA clips to S3: %s", e)
             return False
 
     def get_species_counts(self) -> Dict[str, Dict[str, int]]:

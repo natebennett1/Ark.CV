@@ -5,10 +5,13 @@ This module handles the temporal state of tracked fish, including species voting
 direction detection, and crossing counting.
 """
 
+import logging
 from collections import deque, defaultdict
 from typing import Dict, Optional, Tuple, List
 
 from ..config.settings import CountingConfig
+
+logger = logging.getLogger(__name__)
 
 
 class FishState:
@@ -156,8 +159,8 @@ class FishState:
                 oscillation_cooldown = max(cooldown_frames, 15)  # At least 0.5 seconds at 30fps
                 
                 if frames_since_last < oscillation_cooldown:
-                    print(f"🚫 OSCILLATION DETECTED: Track {self.track_id} tried to cross {direction} "
-                          f"only {frames_since_last} frames after {self.last_crossing_direction}")
+                    logger.info("OSCILLATION DETECTED: Track %d tried to cross %s only %d frames after %s",
+                                 self.track_id, direction, frames_since_last, self.last_crossing_direction)
                     return False
                 
                 # Track consecutive opposite crossings
@@ -167,8 +170,8 @@ class FishState:
                 if self.consecutive_opposite_crossings >= 2:
                     extended_cooldown = 30  # 1 second at 30fps
                     if frames_since_last < extended_cooldown:
-                        print(f"🚫 EXCESSIVE OSCILLATION: Track {self.track_id} blocked after "
-                              f"{self.consecutive_opposite_crossings} rapid reversals")
+                        logger.info("EXCESSIVE OSCILLATION: Track %d blocked after %d rapid reversals",
+                                    self.track_id, self.consecutive_opposite_crossings)
                         return False
             else:
                 # Same direction as last crossing, reset oscillation counter

@@ -6,16 +6,19 @@ for fish detection with multi-object tracking.
 """
 
 import os
+import logging
 import tempfile
 import yaml
 import torch
 import traceback
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Tuple
 import numpy as np
 from ultralytics import YOLO
 from ultralytics.engine.results import Results
 
 from ..config.settings import ModelConfig, BotsortConfig
+
+logger = logging.getLogger(__name__)
 
 
 class FishDetector:
@@ -84,8 +87,8 @@ class FishDetector:
         """Load the YOLO model with error handling."""
         if not self.model_config.model_path:
             raise ValueError("Model path not configured")
-        
-        print(f"Attempting to load model from: {self.model_config.model_path}")
+
+        logger.info("Attempting to load model from: %s", self.model_config.model_path)
 
         # Apply torch.load patch for compatibility
         original_load = self._patch_torch_load()
@@ -93,10 +96,9 @@ class FishDetector:
         try:
             self.model = YOLO(self.model_config.model_path).to(self.device)
             self.model.model.eval()
-            print(f"✔ Model loaded successfully on device: {self.device}")
+            logger.info("Model loaded successfully on device: %s", self.device)
         except Exception as e:
-            print(f"✖ Failed to load model: {e}")
-            traceback.print_exc()
+            logger.exception("Failed to load model: %s", e)
             raise
         finally:
             # Restore original torch.load
@@ -178,7 +180,7 @@ class FishDetector:
                 torch.cuda.empty_cache()
         
         self.model = None
-        print("✔ Detector resources cleaned up")
+        logger.info("Detector resources cleaned up.")
     
     def __enter__(self):
         """Context manager entry."""

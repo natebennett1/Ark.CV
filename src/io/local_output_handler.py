@@ -5,14 +5,17 @@ This implementation writes results to local CSV files and generates
 summary reports, suitable for local development and testing.
 """
 
-import csv
 import os
+import logging
+import csv
 from typing import Dict
 from datetime import datetime
 from collections import defaultdict
 
 from ..config.settings import IOConfig
 from .output_handler import OutputHandler
+
+logger = logging.getLogger(__name__)
 
 
 class LocalOutputHandler(OutputHandler):
@@ -52,11 +55,11 @@ class LocalOutputHandler(OutputHandler):
                 "Location", "Date"
             ])
             
-            print(f"✔ CSV output opened: {self.csv_path}")
+            logger.info("CSV output opened: %s", self.csv_path)
             return True
             
         except Exception as e:
-            print(f"✖ Failed to open CSV file: {e}")
+            logger.exception("Failed to open CSV file: %s", e)
             return False
     
     def record_count(self, species: str, direction: str,
@@ -81,7 +84,7 @@ class LocalOutputHandler(OutputHandler):
             True if write successful, False otherwise
         """
         if self.csv_writer is None:
-            print("✖ CSV writer not initialized")
+            logger.error("CSV writer not initialized")
             return False
         
         try:
@@ -106,7 +109,7 @@ class LocalOutputHandler(OutputHandler):
             return True
             
         except Exception as e:
-            print(f"✖ Error writing CSV record: {e}")
+            logger.exception("Error writing CSV record: %s", e)
             return False
     
     def write_final_counts(self, qa_clips_s3_url: str = None) -> bool:
@@ -178,10 +181,10 @@ class LocalOutputHandler(OutputHandler):
                     f.write(f"{species:20s} Total: {total_species:3d} (Up: {counts['Upstream']:3d}, Down: {counts['Downstream']:3d})\n")
                 
                 f.write(f"\nDetailed results: {os.path.basename(self.csv_path)}\n")
-            
-            print(f"✔ Summary report written: {summary_path}")
+
+            logger.info("Summary report written: %s", summary_path)
             return True
             
         except Exception as e:
-            print(f"✖ Error writing summary report: {e}")
+            logger.exception("Error writing summary report: %s", e)
             return False

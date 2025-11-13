@@ -5,6 +5,7 @@ This module provides adipose fin detection capabilities as a second-pass
 refinement for salmonid species classification.
 """
 
+import logging
 import numpy as np
 import torch
 import traceback
@@ -12,6 +13,8 @@ from typing import Optional, Tuple
 from ultralytics import YOLO
 
 from ..config.settings import ModelConfig
+
+logger = logging.getLogger(__name__)
 
 
 class AdiposeDetector:
@@ -53,10 +56,10 @@ class AdiposeDetector:
             True if model loaded successfully, False if no model path provided
         """
         if not self.model_config.adipose_model_path:
-            print("ℹ No adipose model provided; skipping second-pass refinement.")
+            logger.info("No adipose model provided; skipping second-pass refinement.")
             return False
 
-        print(f"Attempting to load model from: {self.model_config.adipose_model_path}")
+        logger.info("Attempting to load model from: %s", self.model_config.adipose_model_path)
 
         # Apply torch.load patch for compatibility
         original_load = self._patch_torch_load()
@@ -65,11 +68,10 @@ class AdiposeDetector:
             original_load = self._patch_torch_load()
             self.model = YOLO(self.model_config.adipose_model_path).to(self.device)
             self.model.model.eval()
-            print(f"✔ Adipose model loaded successfully on device: {self.device}")
+            logger.info("Adipose model loaded successfully on device: %s", self.device)
             return True
         except Exception as e:
-            print(f"✖ Failed to load model: {e}")
-            traceback.print_exc()
+            logger.exception("Failed to load model: %s", e)
             raise
         finally:
             # Restore original torch.load
@@ -156,7 +158,7 @@ class AdiposeDetector:
                 torch.cuda.empty_cache()
         
         self.model = None
-        print("✔ Adipose detector resources cleaned up")
+        logger.info("Adipose detector resources cleaned up.")
     
     @property
     def is_loaded(self) -> bool:

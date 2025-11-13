@@ -1,0 +1,41 @@
+# Use Python slim image to minimize size
+FROM python:3.12-slim
+
+# Install system dependencies (ffmpeg)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    ffmpeg \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /app
+
+# Copy requirements first (for layer caching)
+COPY preprocessing/requirements-preprocessing.txt .
+RUN pip install --no-cache-dir -r requirements-preprocessing.txt
+
+# Copy only the preprocessing module
+COPY preprocessing/preprocessor.py .
+
+# TODO: Comment out. Only for local testing.
+
+# # Create input and output directories and copy a test video into the docker container.
+# # Ensure that the video path in preprocessor.py matches '/app/input/your-test-video.mp4'.
+# # Ensure that the output path in preprocessor.py matches '/app/output'.
+# # To get the output, use 'docker cp <container_id>:/app/output ./output' after running the container.
+# RUN mkdir -p /app/input /app/output
+# COPY your-test-video.mp4 /app/input/
+
+# TODO: End comment out.
+
+# Set environment variables (will be overridden by ECS task definition)
+ENV SQS_MESSAGE=""
+ENV PROCESSING_QUEUE_URL=""
+
+# Run the preprocessor
+CMD ["python", "preprocessor.py"]

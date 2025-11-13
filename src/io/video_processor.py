@@ -5,11 +5,14 @@ This module handles video input/output operations and provides a clean interface
 for frame-by-frame processing that's compatible with both local files and cloud storage.
 """
 
+import logging
 import cv2
 from typing import Optional, Tuple, Generator
 import numpy as np
 
 from ..config.settings import VideoConfig, IOConfig
+
+logger = logging.getLogger(__name__)
 
 
 class VideoProcessor:
@@ -45,7 +48,7 @@ class VideoProcessor:
         
         self.cap = cv2.VideoCapture(self.io_config.video_path)
         if not self.cap.isOpened():
-            print(f"✖ Could not open video: {self.io_config.video_path}")
+            logger.error("Could not open video: %s", self.io_config.video_path)
             return False
         
         # Get video properties
@@ -53,8 +56,7 @@ class VideoProcessor:
         self.height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         self.fps = float(self.cap.get(cv2.CAP_PROP_FPS))
         self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        
-        print(f"Video info: {self.width}x{self.height} @ {self.fps:.1f}fps, {self.total_frames} frames")
+
         return True
     
     def setup_output_video(self) -> bool:
@@ -68,7 +70,7 @@ class VideoProcessor:
             return True
         
         if self.width is None or self.height is None or self.fps is None:
-            print("✖ Cannot setup output video: input video not opened")
+            logger.error("Cannot setup output video: input video not opened")
             return False
         
         fourcc = cv2.VideoWriter_fourcc(*self.video_config.output_video_codec)
@@ -76,10 +78,10 @@ class VideoProcessor:
         self.video_writer = cv2.VideoWriter(self.io_config.video_output_path, fourcc, self.fps, (self.width, self.height))
         
         if not self.video_writer.isOpened():
-            print(f"✖ Failed to create output video: {self.io_config.video_output_path}")
+            logger.error("Failed to create output video: %s", self.io_config.video_output_path)
             return False
-        
-        print(f"✔ Will save annotated video to: {self.io_config.video_output_path}")
+
+        logger.info("Will save annotated video to: %s", self.io_config.video_output_path)
         return True
     
     def read_frames(self) -> Generator[Tuple[bool, Optional[np.ndarray], int, float], None, None]:
@@ -125,7 +127,7 @@ class VideoProcessor:
             self.video_writer.write(frame)
             return True
         except Exception as e:
-            print(f"✖ Error writing frame: {e}")
+            logger.exception("Error writing frame: %s", e)
             return False
     
     def cleanup(self):
@@ -138,7 +140,7 @@ class VideoProcessor:
             self.video_writer.release()
             self.video_writer = None
         
-        print("✔ Video resources cleaned up")
+        logger.info("Video resources cleaned up.")
     
     def __enter__(self):
         """Context manager entry."""

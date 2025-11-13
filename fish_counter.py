@@ -1,13 +1,20 @@
 import os
 import sys
 import time
+import logging
 import cv2
-import traceback
 from datetime import datetime
 from typing import Dict, Any
 
 # Add src to path for importing modules
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+
+# Configure logging before importing other modules
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger()
 
 from src.config import PipelineConfig, ConfigLoader
 from src.detection import FishDetector, AdiposeDetector
@@ -29,7 +36,7 @@ class FishCountingPipeline:
     """
     
     def __init__(self, config: PipelineConfig, is_cloud: bool):
-        print("Initializing Fish Counting Pipeline...")
+        logger.info("Initializing Fish Counting Pipeline.")
 
         self.config = config
         self.config.validate()
@@ -137,7 +144,6 @@ class FishCountingPipeline:
         
         try:
             # Load models
-            print("Loading models...")
             self.detector.load_model()
             self.adipose_detector.load_model()
             
@@ -146,8 +152,7 @@ class FishCountingPipeline:
                 return self._process_video(video_proc, output)
                 
         except Exception as e:
-            print(f"✖ Pipeline failed: {e}")
-            traceback.print_exc()
+            logger.exception("Pipeline failed: %s", e)
             raise
         finally:
             self._cleanup()
@@ -173,10 +178,9 @@ class FishCountingPipeline:
         # Set center line for manual review collector
         center_line = self.tracking_manager.center_line
         self.manual_review_collector.set_center_line_position(center_line)
-        
-        print(f"Starting video processing...")
-        print(f"Center line at pixel {center_line}")
-        
+
+        logger.info("Starting video processing with center line at pixel %s.", center_line)
+
         # Process frames
         for success, frame, frame_number, timestamp_sec in video_proc.read_frames():
             if not success:
@@ -315,9 +319,10 @@ class FishCountingPipeline:
                 y_percent=y_percent,
                 length_inches=fish_state.length_inches
             )
-            
-            print(f"COUNTED: Track {track_id} ({stable_species}, {fish_state.length_inches:.1f}in) "
-                  f"{direction} at {video_timestamp} - Crossing #{fish_state.crossing_count}")
+
+            logger.info("COUNTED: Track %d (%s, %.1fin) %s at %s - Crossing #%d", 
+                        track_id, stable_species, fish_state.length_inches,
+                        direction, video_timestamp, fish_state.crossing_count)
 
             # Report crossing event. This captures low-confidence, unknown species, and bull trout crossings
             self.manual_review_collector.report_crossing_event(
@@ -343,13 +348,13 @@ class FishCountingPipeline:
             self.detector.cleanup()
         if self.adipose_detector:
             self.adipose_detector.cleanup()
-        print("✔ Pipeline cleanup complete")
+        logger.info("Pipeline cleanup complete.")
 
 
 
 def main():
     """Main entry point."""
-    print("🐟 Fish Counting Pipeline v2.0 (Refactored)")
+    logger.info("Begin Fish Counting Pipeline.")
     
     try:
         sqs_message = os.getenv('SQS_MESSAGE')
@@ -359,27 +364,27 @@ def main():
         is_cloud = sqs_message is not None
 
         if is_cloud:
-            print("Running in cloud mode. Loading configuration from SQS message.")
+            logger.info("Running in cloud mode. Loading configuration from SQS message.")
 
             if not model_s3_bucket or not model_s3_key:
                 raise ValueError("MODEL_S3_BUCKET and MODEL_S3_KEY environment variables must be set in cloud mode.")
 
             config = ConfigLoader.load_config_from_sqs_message(sqs_message, model_s3_bucket, model_s3_key)
         else:
-            print("Running in local mode. Loading configuration from: configs/local.json.")
+            logger.info("Running in local mode. Loading configuration from: configs/local.json.")
             config = ConfigLoader.load_config_from_file("configs/local.json")
 
         # Create and run pipeline
         pipeline = FishCountingPipeline(config, is_cloud)
         results = pipeline.run()
-        
-        print("\n🎉 Pipeline completed successfully!")
-        print(f"Processed {results['frames_processed']} frames in {results['processing_time']:.1f}s")
-        
+
+        logger.info("Pipeline completed successfully!")
+        logger.info("Processed %d frames in %.1fs", results['frames_processed'], results['processing_time'])
+
     except KeyboardInterrupt:
-        print("\n⚠️  Pipeline interrupted by user")
+        logger.warning("Pipeline interrupted by user")
     except Exception as e:
-        print(f"\n❌ Pipeline failed: {e}")
+        logger.exception("Pipeline failed: %s", e)
         return 1
     
     return 0
