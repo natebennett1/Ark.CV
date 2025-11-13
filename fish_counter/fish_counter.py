@@ -6,8 +6,8 @@ import cv2
 from datetime import datetime
 from typing import Dict, Any
 
-# Add src to path for importing modules
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+# Add parent directory (repo root) to path for importing fish_counter package
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 # Configure logging before importing other modules
 logging.basicConfig(
@@ -16,12 +16,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger()
 
-from src.config import PipelineConfig, ConfigLoader
-from src.detection import FishDetector, AdiposeDetector
-from src.tracking import TrackingManager
-from src.classification import SpeciesClassifier
-from src.quality import ManualReviewCollector
-from src.io import VideoProcessor, OutputHandler, LocalOutputHandler, CloudOutputHandler
+from fish_counter.config import PipelineConfig, ConfigLoader
+from fish_counter.detection import FishDetector, AdiposeDetector
+from fish_counter.tracking import TrackingManager
+from fish_counter.classification import SpeciesClassifier
+from fish_counter.quality import ManualReviewCollector
+from fish_counter.io import VideoProcessor, OutputHandler, LocalOutputHandler, CloudOutputHandler
 
 # Open CV uses BGR, not RGB
 COLOR_RED = (0, 0, 255)

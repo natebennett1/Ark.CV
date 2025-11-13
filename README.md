@@ -90,7 +90,7 @@ fish_counter.py                     # Pipeline entry point and main orchestrator
 3. **Run the Pipeline**:
   - Set your video and model paths, along with any other parameters of your choosing, in `configs/local.json`.
     ```bash
-    python fish_counter.py
+    python .\fish_counter.\fish_counter.py
     ```
 
 4. **Outputs** (automatically organized in timestamped folders):
