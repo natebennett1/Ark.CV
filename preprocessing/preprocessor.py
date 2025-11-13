@@ -5,11 +5,12 @@ Optimized for cost savings by filtering out empty footage before expensive GPU p
 
 import os
 import sys
+import logging
 import json
+import tempfile
 import cv2
 import boto3
 import subprocess
-import logging
 import shutil
 from typing import List, Dict, Tuple
 from dataclasses import dataclass
@@ -82,7 +83,7 @@ class VideoPreprocessor:
             return True
             
         except Exception as e:
-            logger.error("Failed to download video: %s", e)
+            logger.exception("Failed to download video: %s", e)
             return False
     
     def detect_fish_segments(self, video_path: str) -> List[VideoSegment]:
@@ -348,7 +349,7 @@ class VideoPreprocessor:
             return result.returncode == 0
             
         except Exception as e:
-            logger.error("ffmpeg error: %s", e)
+            logger.exception("ffmpeg error: %s", e)
             return False
     
     def upload_clips_to_s3(self, 
@@ -379,7 +380,7 @@ class VideoPreprocessor:
                 os.remove(local_path)
                 
             except Exception as e:
-                logger.error("Upload failed: %s", e)
+                logger.exception("Upload failed: %s", e)
 
         return clips
     
@@ -413,7 +414,7 @@ class VideoPreprocessor:
                 logger.info("Sent clip %d: %s...", clip['clip_index'], response['MessageId'][:8])
                 
             except Exception as e:
-                logger.error("Failed to send message for clip %d: %s", clip['clip_index'], e)
+                logger.exception("Failed to send message for clip %d: %s", clip['clip_index'], e)
 
 
 def parse_filename(filename: str) -> Tuple[str, str, str, str]:
@@ -477,7 +478,7 @@ def main():
         preprocessor = VideoPreprocessor()
         
         # Download video
-        video_local_path = '/tmp/input_video.mp4'
+        video_local_path = os.path.join(tempfile.gettempdir(), 'input_video.mp4')
         if not preprocessor.download_video_from_s3(video_s3_bucket, video_s3_key, video_local_path):
             return 1
         
@@ -489,7 +490,7 @@ def main():
             return 0
         
         # Extract clips
-        output_dir = '/tmp/clips'
+        output_dir = os.path.join(tempfile.gettempdir(), 'clips')
         video_name = video_filename.replace('.mp4', '')
         clips = preprocessor.extract_video_clips(video_local_path, segments, output_dir, video_name)
         
@@ -525,7 +526,7 @@ def main():
             shutil.rmtree(output_dir)
 
 
-# This version of main() is for local testing only
+# # This version of main() is for local testing only
 # def main():
 #     """Main preprocessing job entry point - uses local files."""
 #     logger.info("Begin Fish Video Preprocessing Job")
@@ -537,7 +538,7 @@ def main():
 #     try:
 #         preprocessor = VideoPreprocessor()
         
-#         video_local_path = 'C:\\Users\\alexqian\\OneDrive - Microsoft\\Documents\\! MY DOCUMENTS !\\ArkInputs\\Sparse-Test-Video.mp4'
+#         video_local_path = 'path-to-your-video.mp4'
         
 #         segments = preprocessor.detect_fish_segments(video_local_path)
         
@@ -545,7 +546,7 @@ def main():
 #             logger.info("No fish detected in video - no processing needed")
 #             return 0
         
-#         output_dir = 'C:\\Users\\alexqian\\OneDrive - Microsoft\\Documents\\! MY DOCUMENTS !\\ArkInputs\\tmp'
+#         output_dir = 'path-to-your-output-directory'
 #         video_name = video_filename.replace('.mp4', '')
 #         clips = preprocessor.extract_video_clips(video_local_path, segments, output_dir, video_name)
         

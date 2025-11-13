@@ -1,0 +1,198 @@
+"""
+Pipeline configuration settings.
+
+This module centralizes all configuration parameters for the fish counting pipeline,
+making it easy to modify behavior without changing core logic.
+"""
+
+import os
+import tempfile
+from datetime import datetime
+from dataclasses import dataclass, field
+from typing import Dict, Any
+
+
+@dataclass
+class ModelConfig:
+    """Configuration for YOLO models."""
+    # Primary detection model
+    model_path: str = ""
+    confidence_threshold: float = 0.56
+    iou_threshold: float = 0.25
+    max_detections: int = 200
+    device: str = "auto"  # "auto", "cuda", "cpu"
+    
+    # Optional adipose fin detection model
+    adipose_model_path: str = ""
+    adipose_min_confidence: float = 0.80
+    adipose_expand_ratio: float = 0.20
+
+
+@dataclass
+class BotsortConfig:
+    """Configuration for BoT-SORT tracker."""
+    tracker_type: str = "botsort"
+    track_high_thresh: float = 0.25
+    track_low_thresh: float = 0.1
+    new_track_thresh: float = 0.25
+    track_buffer: int = 30
+    match_thresh: float = 0.8
+    fuse_score: bool = True
+    gmc_method: str = "sparseOptFlow"
+    proximity_thresh: float = 0.5
+    appearance_thresh: float = 0.8
+    with_reid: bool = False
+    max_time_lost: int = 30
+
+
+@dataclass
+class ClassificationConfig:
+    """Configuration for species classification."""
+    unknown_threshold: float = 0.30
+    min_class_confidence: Dict[str, float] = field(default_factory=lambda: {
+        "BullTrout": 0.80
+    })
+    size_thresholds: Dict[str, Dict[str, float]] = field(default_factory=lambda: {
+        "Chinook": {"adult": 22, "jack": 12, "mini_jack": 0},
+        "Coho": {"adult": 18, "jack": 12},
+        "Sockeye": {"adult": 20},
+        "Steelhead": {"adult": 24},
+        "BullTrout": {"adult": 12}
+    })
+
+
+@dataclass
+class CountingConfig:
+    """Configuration for fish counting and direction detection."""
+    pixels_per_inch: float = 25.253
+    center_line_position: float = 0.50  # Fraction of frame width
+    upstream_direction: str = "right_to_left"  # "right_to_left" or "left_to_right"
+    trail_max_length: int = 30
+    stability_window: int = 3  # Frames for majority vote
+    adipose_window: int = 3
+    count_cooldown_frames: int = 0  # Frames before same track can count again
+
+
+@dataclass
+class ManualReviewConfig:
+    """Configuration for Manual Review data collection - Occlusion video clips."""
+    output_dir: str = ""
+    
+    # Video clip settings
+    clip_pre_event_sec: float = 1.0  # Seconds before occlusion peak to include
+    clip_post_event_sec: float = 3.0  # Seconds after occlusion peak to include
+    clip_codec: str = "mp4v"  # Video codec for clips (mp4v, avc1, etc.)
+    
+    # Occlusion detection thresholds
+    occlusion_proximity_threshold: float = 0.3  # Combined proximity score threshold
+    occlusion_iou_weight: float = 0.8  # Weight for IoU in proximity calculation
+    occlusion_distance_weight: float = 0.2  # Weight for distance in proximity calculation
+
+
+@dataclass
+class VideoConfig:
+    """Configuration for video processing."""
+    save_output_video: bool = True
+    output_video_codec: str = "mp4v"
+
+
+@dataclass
+class IOConfig:
+    """Configuration for input/output paths and formats."""
+    # Input paths
+    video_path: str = ""
+    
+    # Local output paths (will be auto-generated if empty)
+    csv_output_path: str = ""
+    video_output_path: str = ""
+    
+    # Metadata
+    location: str = ""
+    ladder: str = ""
+    date_str: str = ""  # YYYY-MM-DD format
+    time_str: str = ""  # HHMM format
+
+
+@dataclass 
+class PipelineConfig:
+    """Main configuration class that combines all sub-configurations."""
+    
+    # Sub-configurations
+    model: ModelConfig = field(default_factory=ModelConfig)
+    botsort: BotsortConfig = field(default_factory=BotsortConfig)
+    classification: ClassificationConfig = field(default_factory=ClassificationConfig)
+    counting: CountingConfig = field(default_factory=CountingConfig)
+    hitl: ManualReviewConfig = field(default_factory=ManualReviewConfig)
+    video: VideoConfig = field(default_factory=VideoConfig)
+    io: IOConfig = field(default_factory=IOConfig)
+    
+    # Computed properties
+    _file_timestamp: str = field(default_factory=lambda: datetime.now().strftime("%Y%m%d_%H%M%S"))
+    
+    def __post_init__(self):
+        """Auto-generate output paths if not provided."""
+        is_cloud = os.getenv('SQS_MESSAGE') is not None
+
+        # Use temp directory for cloud, current directory for local
+        base_dir = tempfile.gettempdir() if is_cloud else "."
+        
+        # Create timestamped output directory
+        output_dir = os.path.join(base_dir, f"output_{self._file_timestamp}")
+        os.makedirs(output_dir, exist_ok=True)
+        
+        if not self.io.csv_output_path:
+            self.io.csv_output_path = os.path.join(output_dir, f"fish_counts_{self._file_timestamp}.csv")
+        
+        if not self.io.video_output_path:
+            self.io.video_output_path = os.path.join(output_dir, f"annotated_video_{self._file_timestamp}.mp4")
+        
+        if not self.hitl.output_dir:
+            self.hitl.output_dir = os.path.join(output_dir, "manual_review")
+    
+    def validate(self) -> None:
+        """Validate configuration settings."""
+        errors = []
+        
+        # Check required paths
+        if not self.model.model_path:
+            errors.append("Model path is required")
+        elif not os.path.isfile(self.model.model_path):
+            errors.append(f"Model file not found: {self.model.model_path}")
+            
+        if not self.io.video_path:
+            errors.append("Video path is required")
+        elif not os.path.isfile(self.io.video_path):
+            errors.append(f"Video file not found: {self.io.video_path}")
+        
+        # Validate date format
+        if self.io.date_str:
+            try:
+                datetime.strptime(self.io.date_str, "%Y-%m-%d")
+            except ValueError:
+                errors.append(f"Invalid date format '{self.io.date_str}'. Use YYYY-MM-DD.")
+        
+        # Validate numeric ranges
+        if not 0 <= self.counting.center_line_position <= 1:
+            errors.append("Center line position must be between 0 and 1")
+            
+        if not 0 <= self.model.confidence_threshold <= 1:
+            errors.append("Confidence threshold must be between 0 and 1")
+        
+        # Validate upstream direction
+        if self.counting.upstream_direction not in ["left_to_right", "right_to_left"]:
+            errors.append("Upstream direction must be 'left_to_right' or 'right_to_left'")
+        
+        if errors:
+            raise ValueError("Configuration validation failed:\n" + "\n".join(f"- {e}" for e in errors))
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert configuration to dictionary for serialization."""
+        return {
+            'model': self.model.__dict__,
+            'botsort': self.botsort.__dict__, 
+            'classification': self.classification.__dict__,
+            'counting': self.counting.__dict__,
+            'hitl': self.hitl.__dict__,
+            'video': self.video.__dict__,
+            'io': self.io.__dict__
+        }

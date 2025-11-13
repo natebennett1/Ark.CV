@@ -52,7 +52,7 @@ src/
 fish_counter.py                     # Pipeline entry point and main orchestrator
 ```
 
-### Quick Start
+### Fish Counter Quick Start
 
 1. **Setup Environment**:
   - This example is for Windows.
@@ -67,7 +67,7 @@ fish_counter.py                     # Pipeline entry point and main orchestrator
     .\.venv\Scripts\Activate.ps1
 
     # Install dependencies
-    pip install -r requirements.txt
+    pip install -r docker/requirements-fishcounter.txt
     ```
 
 2. **Configure Your Pipeline**:
@@ -88,13 +88,9 @@ fish_counter.py                     # Pipeline entry point and main orchestrator
     ```
 
 3. **Run the Pipeline**:
-  - By default, the `configs/local.json` will be used.
+  - Set your video and model paths, along with any other parameters of your choosing, in `configs/local.json`.
     ```bash
-    python fish_counter.py
-    ```
-  - To override with your own config file, run:
-    ```bash
-    python fish_counter.py configs/your_config_file.json
+    python .\fish_counter.\fish_counter.py
     ```
 
 4. **Outputs** (automatically organized in timestamped folders):
@@ -105,6 +101,101 @@ fish_counter.py                     # Pipeline entry point and main orchestrator
     ├── fish_counts_20251002_143521.csv           # Detection & classification data
     └── fish_counts_20251002_143521_summary.txt   # Summary
     ```
+
+5. **Using Docker**
+  - If you want to containerize the fish counter program and test it locally, do the following:
+    - Copy over whatever video you want to test into the root of this repository (Ark.CV directory).
+    - Edit Dockerfile.fishcounter to create an input directory and copy a test video into the docker container. It should look something like this:
+      ```bash
+      ...
+
+      # Not actually needed for cloud deployment, but useful for local testing
+      COPY configs/ ./configs/
+
+      # Add these two lines
+      RUN mkdir -p /app/input
+      COPY your-test-video.mp4 /app/input/
+
+      ...
+      ```
+    - Add the following lines in config_loader.py's load_config_from_file method, just before "config.\_\_post_init\_\_()" is called:
+      ```bash
+      config.io.video_path = '/app/input/your-test-video.mp4'
+      config.model.model_path = '/app/weights/species-weights.pt'
+      config.model.adipose_model_path = '/app/weights/adipose-weights.pt'
+      ```
+    - From the root directory of the repository, build the docker image:
+      ```bash
+      docker build -f .\docker\Dockerfile.fishcounter -t fishcounter-latest .
+      ```
+    - Run the docker container:
+      ```bash
+      docker run --name fishcounter-container fishcounter-latest
+      ```
+    - To get the output after the container has finished running, run this command and look in the temp_app directory for the output folder:
+      ```bash
+      docker cp fishcounter-container:/app ./temp_app
+      ```
+    - IMPORTANT: Be sure to undo all changes made to both the Dockerfile and config_loader.py after you are done testing.
+
+### Preprocessor Quick Start
+
+1. **Setup Environment**:
+  - This example is for Windows.
+    ```bash
+    # Navigate to your project directory
+    cd "path\to\your\repo"
+
+    # Create your virtual environment (if you don't have one already)
+    python -m venv .venv
+
+    # Activate your virtual environment
+    .\.venv\Scripts\Activate.ps1
+
+    # Install dependencies
+    pip install -r docker/requirements-preprocessing.txt
+    ```
+
+2. **Use Local Version**
+  - Use the version of main in preprocessor.py that is meant for local execution, and replace the input video and output directory paths.
+
+3. **Run the Preprocessor**
+  - Run:
+    ```bash
+    python preprocessing/preprocessor.py
+    ```
+
+4. **Using Docker**
+  - If you want to containerize preprocessor.py and test it locally, do the following:
+    - Copy over whatever video you want to test into the root of this repository (Ark.CV directory).
+    - Edit Dockerfile.preprocessing to create input and output directories and copy a test video into the docker container. It should look something like this:
+      ```bash
+      ...
+
+      # Copy only the preprocessing module
+      COPY preprocessing/preprocessor.py .
+
+      # Add these two lines
+      RUN mkdir -p /app/input /app/output
+      COPY your-test-video.mp4 /app/input/
+
+      ...
+      ```
+    - Ensure that the video path in preprocessor.py matches '/app/input/your-test-video.mp4'.
+    - Ensure that the output path in preprocessor.py matches '/app/output'.
+    - From the root directory of the repository, build the docker image:
+      ```bash
+      docker build -f .\docker\Dockerfile.preprocessing -t preprocessing-latest .
+      ```
+    - Run the docker container:
+      ```bash
+      docker run --name preprocessing-container preprocessing-latest
+      ```
+    - To get the output after the container has finished running:
+      ```bash
+      docker cp preprocessing-container:/app/output ./output
+      ```
+    - IMPORTANT: Be sure to undo all changes made to both the Dockerfile and preprocessor.py after you are done testing.
 
 ## Recommended Next Steps for the Fish Counting Model
 

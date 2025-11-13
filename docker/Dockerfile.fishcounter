@@ -1,0 +1,30 @@
+# Use Python slim image to minimize size
+FROM python:3.12-slim
+
+# Install system dependencies for OpenCV and video processing
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    libgl1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /app
+
+# Copy requirements first (for layer caching)
+COPY docker/requirements-fishcounter.txt .
+RUN pip install --no-cache-dir -r requirements-fishcounter.txt
+
+# Copy application code
+COPY fish_counter/ ./fish_counter/
+COPY weights/ ./weights/
+
+# Not actually needed for cloud deployment, but useful for local testing
+COPY configs/ ./configs/
+
+# Run the fish counter
+CMD ["python", "fish_counter/fish_counter.py"]
