@@ -22,9 +22,5 @@ RUN pip install --no-cache-dir -r requirements-preprocessing.txt
 # Copy only the preprocessing module
 COPY preprocessing/preprocessor.py .
 
-# Set environment variables (will be overridden by ECS task definition)
-ENV SQS_MESSAGE=""
-ENV PROCESSING_QUEUE_URL=""
-
 # Run the preprocessor
 CMD ["python", "preprocessor.py"]

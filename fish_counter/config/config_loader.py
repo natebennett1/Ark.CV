@@ -29,20 +29,18 @@ class ConfigLoader:
                 for key, value in settings.items():
                     if hasattr(section_obj, key):
                         setattr(section_obj, key, value)
-        
+
         config.__post_init__()
         
         return config
     
     @staticmethod
-    def load_config_from_sqs_message(sqs_message: str, model_s3_bucket: str, model_s3_key: str) -> PipelineConfig:
+    def load_config_from_sqs_message(sqs_message: str) -> PipelineConfig:
         """
         Load configuration from an SQS message for cloud deployment.
         
         Args:
             sqs_message: JSON string containing the SQS message body
-            model_s3_bucket: S3 bucket containing the model weights
-            model_s3_key: S3 key for the model weights file
             
         Expected SQS message format:
         {
@@ -72,15 +70,11 @@ class ConfigLoader:
             video_s3_key
         )
         
-        local_model_path = ConfigLoader._download_from_s3(
-            model_s3_bucket,
-            model_s3_key
-        )
-        
         config = PipelineConfig()
         
-        # Set model config
-        config.model.model_path = local_model_path
+        # Set model paths to models in Docker image
+        config.model.model_path = '/app/weights/species-weights.pt'
+        config.model.adipose_model_path = '/app/weights/adipose-weights.pt'
 
         #TODO: Set CountingConfig upstream direction based on location and ladder
 

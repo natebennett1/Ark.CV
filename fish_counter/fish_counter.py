@@ -358,18 +358,12 @@ def main():
     
     try:
         sqs_message = os.getenv('SQS_MESSAGE')
-        model_s3_bucket = os.getenv('MODEL_S3_BUCKET')
-        model_s3_key = os.getenv('MODEL_S3_KEY')
 
         is_cloud = sqs_message is not None
 
         if is_cloud:
             logger.info("Running in cloud mode. Loading configuration from SQS message.")
-
-            if not model_s3_bucket or not model_s3_key:
-                raise ValueError("MODEL_S3_BUCKET and MODEL_S3_KEY environment variables must be set in cloud mode.")
-
-            config = ConfigLoader.load_config_from_sqs_message(sqs_message, model_s3_bucket, model_s3_key)
+            config = ConfigLoader.load_config_from_sqs_message(sqs_message)
         else:
             logger.info("Running in local mode. Loading configuration from: configs/local.json.")
             config = ConfigLoader.load_config_from_file("configs/local.json")

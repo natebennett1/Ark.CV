@@ -102,6 +102,42 @@ fish_counter.py                     # Pipeline entry point and main orchestrator
     └── fish_counts_20251002_143521_summary.txt   # Summary
     ```
 
+5. **Using Docker**
+  - If you want to containerize the fish counter program and test it locally, do the following:
+    - Copy over whatever video you want to test into the root of this repository (Ark.CV directory).
+    - Edit Dockerfile.fishcounter to create an input directory and copy a test video into the docker container. It should look something like this:
+      ```bash
+      ...
+
+      # Not actually needed for cloud deployment, but useful for local testing
+      COPY configs/ ./configs/
+
+      # Add these two lines
+      RUN mkdir -p /app/input
+      COPY your-test-video.mp4 /app/input/
+
+      ...
+      ```
+    - Add the following lines in config_loader.py's load_config_from_file method, just before "config.\_\_post_init\_\_()" is called:
+      ```bash
+      config.io.video_path = '/app/input/your-test-video.mp4'
+      config.model.model_path = '/app/weights/species-weights.pt'
+      config.model.adipose_model_path = '/app/weights/adipose-weights.pt'
+      ```
+    - From the root directory of the repository, build the docker image:
+      ```bash
+      docker build -f .\docker\Dockerfile.fishcounter -t fishcounter-latest .
+      ```
+    - Run the docker container:
+      ```bash
+      docker run --name fishcounter-container fishcounter-latest
+      ```
+    - To get the output after the container has finished running, run this command and look in the temp_app directory for the output folder:
+      ```bash
+      docker cp fishcounter-container:/app ./temp_app
+      ```
+    - IMPORTANT: Be sure to undo all changes made to both the Dockerfile and config_loader.py after you are done testing.
+
 ### Preprocessor Quick Start
 
 1. **Setup Environment**:
@@ -139,6 +175,7 @@ fish_counter.py                     # Pipeline entry point and main orchestrator
       # Copy only the preprocessing module
       COPY preprocessing/preprocessor.py .
 
+      # Add these two lines
       RUN mkdir -p /app/input /app/output
       COPY your-test-video.mp4 /app/input/
 
