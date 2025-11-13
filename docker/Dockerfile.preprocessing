@@ -16,22 +16,11 @@ RUN apt-get update && \
 WORKDIR /app
 
 # Copy requirements first (for layer caching)
-COPY preprocessing/requirements-preprocessing.txt .
+COPY docker/requirements-preprocessing.txt .
 RUN pip install --no-cache-dir -r requirements-preprocessing.txt
 
 # Copy only the preprocessing module
 COPY preprocessing/preprocessor.py .
-
-# TODO: Comment out. Only for local testing.
-
-# # Create input and output directories and copy a test video into the docker container.
-# # Ensure that the video path in preprocessor.py matches '/app/input/your-test-video.mp4'.
-# # Ensure that the output path in preprocessor.py matches '/app/output'.
-# # To get the output, use 'docker cp <container_id>:/app/output ./output' after running the container.
-# RUN mkdir -p /app/input /app/output
-# COPY your-test-video.mp4 /app/input/
-
-# TODO: End comment out.
 
 # Set environment variables (will be overridden by ECS task definition)
 ENV SQS_MESSAGE=""

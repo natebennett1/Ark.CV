@@ -538,7 +538,7 @@ def main():
 #     try:
 #         preprocessor = VideoPreprocessor()
         
-#         video_local_path = 'C:\\Users\\alexqian\\OneDrive - Microsoft\\Documents\\! MY DOCUMENTS !\\ArkInputs\\Sparse-Test-Video.mp4'
+#         video_local_path = 'path-to-your-video.mp4'
         
 #         segments = preprocessor.detect_fish_segments(video_local_path)
         
@@ -546,7 +546,7 @@ def main():
 #             logger.info("No fish detected in video - no processing needed")
 #             return 0
         
-#         output_dir = 'C:\\Users\\alexqian\\OneDrive - Microsoft\\Documents\\! MY DOCUMENTS !\\ArkInputs\\tmp'
+#         output_dir = 'path-to-your-output-directory'
 #         video_name = video_filename.replace('.mp4', '')
 #         clips = preprocessor.extract_video_clips(video_local_path, segments, output_dir, video_name)
         
