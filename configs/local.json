@@ -1,9 +1,10 @@
 {
   "model": {
-    "model_path": "C:\\Users\\20ben\\Downloads\\weights93.pt"
+    "model_path": "path-to-your-species-weights",
+    "adipose_model_path": "path-to-your-adipose-weights"
   },
   "io": {
-    "video_path": "C:\\Users\\20ben\\Downloads\\20240711_800_100.mp4",
+    "video_path": "path-to-your-video",
     "location": "wells",
     "ladder": "east",
     "date_str": "2025-08-31",
